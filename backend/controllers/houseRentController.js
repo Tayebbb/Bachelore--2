@@ -2,6 +2,7 @@ import HouseRentListing from '../models/HouseRentListing.js';
 import Contact from '../models/Contact.js';
 import User from '../models/User.js';
 import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
 
 const ADMIN_CODE = process.env.ADMIN_CODE || 'choton2025';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_jwt_secret';
@@ -24,8 +25,11 @@ export const createListing = async (req, res) => {
   const isAdmin = await isAdminFromReq(req);
   if(!isAdmin) return res.status(403).json({ msg: 'Forbidden' });
   const { ownerId, title, description, location, price, rooms, images, contact } = req.body;
-  if(!ownerId || !title) return res.status(400).json({ msg: 'ownerId and title required' });
-  const listing = new HouseRentListing({ ownerRef: ownerId, title, description, location, price, rooms, images: images || [], contact });
+  if(!title) return res.status(400).json({ msg: 'title required' });
+  // ownerId is optional for admin-created listings; set ownerRef to null when missing or invalid
+  const ownerRef = ownerId && mongoose.Types.ObjectId.isValid(ownerId) ? ownerId : null;
+  // Listings created by admin should be visible immediately (auto-verified)
+  const listing = new HouseRentListing({ ownerRef, title, description, location, price, rooms, images: images || [], contact, verified: true });
   await listing.save();
   res.status(201).json({ msg: 'Listing created', listing });
   }catch(err){ res.status(500).json({ error: err.message }); }

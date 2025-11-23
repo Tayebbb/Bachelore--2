@@ -1,7 +1,8 @@
 import mongoose from 'mongoose';
 
 const HouseRentListingSchema = new mongoose.Schema({
-  ownerRef: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+
+  ownerRef: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   title: { type: String, required: true },
   description: { type: String },
   location: { type: String },
