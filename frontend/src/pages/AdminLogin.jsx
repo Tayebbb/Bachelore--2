@@ -1,38 +1,33 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-const ADMIN_CODE = "choton2025";
+const ADMIN_EMAIL = "chudpaglu@gmail.com";
+const ADMIN_PASS = "chudpaglu";
 
 export default function AdminLogin() {
-  const [code, setCode] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const navigate = useNavigate();
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
-    try {
-      const res = await fetch("/api/admin/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ adminCode: code }),
-      });
-      const data = await res.json();
-      if (res.ok && data.token) {
-        localStorage.setItem("isAdmin", "true");
-        localStorage.setItem("adminToken", data.token);
-        // set a fallback admin user id so AdminDashboard can post listings
-        // backend expects an ownerId; admin actions use adminCode/JWT for authorization
-        localStorage.setItem(
-          "adminUserId",
-          localStorage.getItem("adminUserId") || "admin"
-        );
-        navigate("/admin-dashboard");
-      } else {
-        setError(data.msg || "Invalid admin code.");
-      }
-    } catch (err) {
-      setError("Network error");
+    setError("");
+
+    // Require the specific credentials provided
+    if (email === ADMIN_EMAIL && password === ADMIN_PASS) {
+      // mark admin locally (mock authentication)
+      localStorage.setItem("isAdmin", "true");
+      localStorage.setItem("adminToken", "local-admin-token");
+      localStorage.setItem(
+        "adminUserId",
+        localStorage.getItem("adminUserId") || "admin"
+      );
+      navigate("/admin-dashboard");
+      return;
     }
+
+    setError("Invalid admin credentials.");
   };
 
   return (
@@ -44,18 +39,34 @@ export default function AdminLogin() {
         <h2 className="mb-3 text-center">Admin Login</h2>
         <form onSubmit={handleSubmit}>
           <div className="mb-3">
-            <label htmlFor="adminCode" className="form-label">
-              Admin Code
+            <label htmlFor="adminEmail" className="form-label">
+              Email
+            </label>
+            <input
+              type="email"
+              className="form-control"
+              id="adminEmail"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              placeholder="admin@example.com"
+            />
+          </div>
+
+          <div className="mb-3">
+            <label htmlFor="adminPass" className="form-label">
+              Password
             </label>
             <input
               type="password"
               className="form-control"
-              id="adminCode"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
+              id="adminPass"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               required
             />
           </div>
+
           {error && <div className="alert alert-danger">{error}</div>}
           <button type="submit" className="btn btn-primary w-100">
             Login
