@@ -1,5 +1,6 @@
-import User from "../models/User.js";
 import bcrypt from 'bcryptjs';
+import { User } from '../db/models.js';
+import { normalizeEmail } from '../utils/auth.js';
 
 export const signup = async (req, res) => {
   try {
@@ -23,24 +24,24 @@ export const signup = async (req, res) => {
       return res.status(400).json({ msg: "Please provide a valid educational email address." });
     }
 
-    const existingUser = await User.findOne({ email });
+    const normalizedEmail = normalizeEmail(email);
+    const existingUser = await User.findOne({ where: { Email: normalizedEmail } });
     if (existingUser) return res.status(400).json({ msg: "User already exists" });
 
     const hashed = await bcrypt.hash(password, 10);
 
-    const newUser = new User({
-      fullName,
-      email,
-      password: hashed,
-      university,
-      year,
-      semester,
-      eduEmail,
-      phone
+    const saved = await User.create({
+      FullName: fullName,
+      Email: normalizedEmail,
+      Password: hashed,
+      University: university,
+      Year: year,
+      Semester: semester,
+      EduEmail: eduEmail,
+      Phone: phone,
     });
-    const saved = await newUser.save();
-    console.log('User saved:', { id: saved._id, email: saved.email });
-    res.status(201).json({ msg: "User registered successfully", user: { id: saved._id, email: saved.email } });
+    console.log('User saved:', { id: saved.UserId, email: saved.Email });
+    res.status(201).json({ msg: 'User registered successfully', user: { id: saved.UserId, email: saved.Email } });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

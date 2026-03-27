@@ -1,65 +1,150 @@
-import React, { useState, useEffect } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import React, { useEffect, useState } from 'react';
+import { Navigate, Route, Routes } from 'react-router-dom';
 
-import Home from '../pages/Home.jsx'
-import PublicHome from '../pages/PublicHome.jsx'
-import Login from '../pages/Login.jsx'
-import Signup from '../pages/Signup.jsx'
-import Tuition from '../pages/Tuition.jsx'
-import Navbar from '../components/Navbar.jsx'
-import Footer from '../components/Footer.jsx'
-import Subscribe from '../pages/Subscribe.jsx'
-import Bills from '../pages/Bills.jsx'
-import Marketplace from '../pages/Marketplace.jsx'
-import Roommates from '../pages/Roommates.jsx'
-import Maids from '../pages/Maids.jsx'
-import HouseRent from '../pages/HouseRent.jsx'
-import RoommateListings from '../pages/RoommateListings.jsx'
-import AdminLogin from '../pages/AdminLogin.jsx'
-import AdminDashboard from '../pages/AdminDashboard.jsx'
-import AnnouncementsAll from '../pages/AnnouncementsAll.jsx'
+import AppShell from '../components/AppShell.jsx';
+import Dashboard from '../pages/Dashboard.jsx';
+import TuitionModern from '../pages/TuitionModern.jsx';
+import MaidsModern from '../pages/MaidsModern.jsx';
+import RoommatesModern from '../pages/RoommatesModern.jsx';
+import HouseRentModern from '../pages/HouseRentModern.jsx';
+import MarketplaceModern from '../pages/MarketplaceModern.jsx';
+import SubscriptionModern from '../pages/SubscriptionModern.jsx';
+import AdminDashboardModern from '../pages/AdminDashboardModern.jsx';
+import LoginModern from '../pages/LoginModern.jsx';
+import SignupModern from '../pages/SignupModern.jsx';
+import ForgotPassword from '../pages/ForgotPassword.jsx';
+import PublicHomeModern from '../pages/PublicHomeModern.jsx';
+import AdminLoginModern from '../pages/AdminLoginModern.jsx';
+import BillsModern from '../pages/BillsModern.jsx';
+import NotFound from '../pages/NotFound.jsx';
 
-import { isAuthed, onAuthChange, offAuthChange } from '../lib/auth'
-import { useLocation } from 'react-router-dom'
+import { isAuthed, offAuthChange, onAuthChange } from '../lib/auth.js';
 
-export default function Router(){
-  const PrivateRoute = ({ children }) => {
-    const [authed, setAuthed] = useState(() => isAuthed())
-    useEffect(() => {
-      const cb = () => setAuthed(isAuthed())
-      onAuthChange(cb)
-      return () => offAuthChange(cb)
-    }, [])
-    return authed ? children : <Navigate to="/login" replace />
-  }
-  const location = useLocation();
+function PrivateRoute({ children }) {
+  const [authed, setAuthed] = useState(() => isAuthed());
+
+  useEffect(() => {
+    const cb = () => setAuthed(isAuthed());
+    onAuthChange(cb);
+    return () => offAuthChange(cb);
+  }, []);
+
+  return authed ? children : <Navigate to="/login" replace />;
+}
+
+function ShellPage({ children }) {
+  return <AppShell>{children}</AppShell>;
+}
+
+export default function Router() {
   return (
-    <>
-      <Navbar />
-      <Routes>
-        <Route path="/" element={<PublicHome/>} />
-        <Route path="/home" element={<PrivateRoute><Home/></PrivateRoute>} />
-        <Route path="/login" element={<Login/>} />
-        <Route path="/signup" element={<Signup />} />
-        <Route path="/dashboard" element={<div>Dashboard</div>} />
-        <Route path="/roommates" element={<PrivateRoute><Roommates/></PrivateRoute>} />
-        <Route path="/roommate-listings" element={<PrivateRoute><RoommateListings/></PrivateRoute>} />
-        <Route path="/maids" element={<PrivateRoute><Maids/></PrivateRoute>} />
-        <Route path="/tuition" element={<PrivateRoute><Tuition/></PrivateRoute>} />
-        <Route path="/bills" element={<PrivateRoute><Bills/></PrivateRoute>} />
-        <Route path="/marketplace" element={<PrivateRoute><Marketplace/></PrivateRoute>} />
-        <Route path="/item/:id" element={<div>ItemDetail</div>} />
-        <Route path="/post" element={<div>PostItem</div>} />
-        <Route path="/profile" element={<div>Profile</div>} />
-        <Route path="/houserent" element={<PrivateRoute><HouseRent/></PrivateRoute>} />
-        <Route path="/subscription" element={<PrivateRoute><Subscribe/></PrivateRoute>} />
-        <Route path="/announcements-all" element={<AnnouncementsAll/>} />
-        <Route path="/admin-login" element={<AdminLogin/>} />
-        <Route path="/admin-dashboard" element={<AdminDashboard/>} />
-        <Route path="*" element={<div>NotFound</div>} />
-      </Routes>
-      {/* Only show global Footer if not on signup page */}
-      {location.pathname !== '/signup' && <Footer />}
-    </>
-  )
+    <Routes>
+      <Route path="/" element={<PublicHomeModern />} />
+      <Route path="/login" element={<LoginModern />} />
+      <Route path="/signup" element={<SignupModern />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/admin-login" element={<AdminLoginModern />} />
+
+      <Route
+        path="/home"
+        element={
+          <PrivateRoute>
+            <ShellPage>
+              <Dashboard />
+            </ShellPage>
+          </PrivateRoute>
+        }
+      />
+
+      <Route
+        path="/tuition"
+        element={
+          <PrivateRoute>
+            <ShellPage>
+              <TuitionModern />
+            </ShellPage>
+          </PrivateRoute>
+        }
+      />
+
+      <Route
+        path="/maids"
+        element={
+          <PrivateRoute>
+            <ShellPage>
+              <MaidsModern />
+            </ShellPage>
+          </PrivateRoute>
+        }
+      />
+
+      <Route
+        path="/roommates"
+        element={
+          <PrivateRoute>
+            <ShellPage>
+              <RoommatesModern />
+            </ShellPage>
+          </PrivateRoute>
+        }
+      />
+
+      <Route
+        path="/houserent"
+        element={
+          <PrivateRoute>
+            <ShellPage>
+              <HouseRentModern />
+            </ShellPage>
+          </PrivateRoute>
+        }
+      />
+
+      <Route
+        path="/marketplace"
+        element={
+          <PrivateRoute>
+            <ShellPage>
+              <MarketplaceModern />
+            </ShellPage>
+          </PrivateRoute>
+        }
+      />
+
+      <Route
+        path="/subscription"
+        element={
+          <PrivateRoute>
+            <ShellPage>
+              <SubscriptionModern />
+            </ShellPage>
+          </PrivateRoute>
+        }
+      />
+
+      <Route
+        path="/bills"
+        element={
+          <PrivateRoute>
+            <ShellPage>
+              <BillsModern />
+            </ShellPage>
+          </PrivateRoute>
+        }
+      />
+
+      <Route
+        path="/admin-dashboard"
+        element={
+          <PrivateRoute>
+            <ShellPage>
+              <AdminDashboardModern />
+            </ShellPage>
+          </PrivateRoute>
+        }
+      />
+
+      <Route path="*" element={<ShellPage><NotFound /></ShellPage>} />
+    </Routes>
+  );
 }

@@ -1,6 +1,9 @@
 import axios from "axios";
 
-const BASE = import.meta.env.VITE_API_URL || "https://backenddd.up.railway.app";
+const BASE =
+  import.meta.env.VITE_API_BASE_URL ||
+  import.meta.env.VITE_API_URL ||
+  "http://localhost:5000/api";
 const instance = axios.create({
   baseURL: BASE,
   headers: {

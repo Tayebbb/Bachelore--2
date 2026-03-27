@@ -1,34 +1,32 @@
-import BookedTuition from '../models/BookedTuition.js';
-import AppliedTuition from '../models/AppliedTuition.js';
-import Tuition from '../models/Tuition.js';
-import jwt from 'jsonwebtoken';
-
-const ADMIN_CODE = process.env.ADMIN_CODE || 'choton2025';
-const JWT_SECRET = process.env.JWT_SECRET || 'dev_jwt_secret';
-
-async function isAdminFromReq(req){
-  let isAdmin = false;
-  const authHeader = req.headers.authorization || '';
-  if (authHeader.startsWith('Bearer ')) {
-    const token = authHeader.slice(7);
-    try {
-      const payload = jwt.verify(token, JWT_SECRET);
-      if (payload && payload.role === 'admin') isAdmin = true;
-    } catch (err) { }
-  }
-  const adminCode = req.body.adminCode || req.query.adminCode;
-  if (!isAdmin && adminCode === ADMIN_CODE) isAdmin = true;
-  return isAdmin;
-}
+import { BookedTuition, AppliedTuition, Tuition, db } from '../db/models.js';
+import { isAdminFromReq, normalizeEmail } from '../utils/auth.js';
 
 export const listBooked = async (req, res) => {
   try {
     const { tuitionId, email } = req.query;
-    let filter = {};
-    if (tuitionId) filter.tuitionRef = tuitionId;
-    if (email) filter.applicantEmail = email;
-    const list = await BookedTuition.find(filter).sort({ bookedAt: -1 });
-    res.json(list);
+    const where = {};
+    if (tuitionId) where.TuitionId = tuitionId;
+    if (email) where.ApplicantEmail = normalizeEmail(email);
+    const list = await BookedTuition.findAll({ where, order: [['BookedAt', 'DESC']] });
+
+    res.json(
+      list.map((b) => ({
+        _id: b.BookedTuitionId,
+        tuitionRef: b.TuitionId,
+        title: b.Title,
+        subject: b.Subject,
+        days: b.Days,
+        salary: b.Salary,
+        location: b.Location,
+        description: b.Description,
+        contact: b.Contact,
+        applicantName: b.ApplicantName,
+        applicantEmail: b.ApplicantEmail,
+        applicantContact: b.ApplicantContact,
+        message: b.Message,
+        bookedAt: b.BookedAt,
+      })),
+    );
   } catch (err) {
     console.error('verifyApplication error', err);
     res.status(500).json({ error: err.message || String(err) });
@@ -37,58 +35,96 @@ export const listBooked = async (req, res) => {
 
 export const verifyApplication = async (req, res) => {
   try{
-    const isAdmin = await isAdminFromReq(req);
-    if(!isAdmin) return res.status(403).json({ msg: 'Forbidden' });
+    if (!isAdminFromReq(req)) return res.status(403).json({ msg: 'Forbidden' });
+
     const appId = req.params.id;
-    const app = await AppliedTuition.findById(appId);
-    if(!app) return res.status(404).json({ msg: 'Application not found' });
+    const transaction = await db.sequelize.transaction();
+    try {
+      const app = await AppliedTuition.findByPk(appId, { transaction });
+      if (!app) {
+        await transaction.rollback();
+        return res.status(404).json({ msg: 'Application not found' });
+      }
 
-    const tuition = await Tuition.findById(app.tuitionId);
-    if(!tuition) return res.status(404).json({ msg: 'Tuition not found' });
+      const alreadyBooked = await BookedTuition.findOne({ where: { AppliedTuitionId: appId }, transaction });
+      if (alreadyBooked) {
+        await transaction.rollback();
+        return res.status(409).json({ msg: 'Application already booked' });
+      }
 
-    const booked = new BookedTuition({
-      tuitionRef: tuition._id,
-      title: tuition.title || tuition.subject || 'Tuition',
-      subject: tuition.subject || 'General',
-      days: tuition.days || 'To be arranged',
-      salary: tuition.salary || 'Negotiable',
-      location: tuition.location || 'Unknown',
-      description: tuition.description || '',
-      contact: tuition.contact || 'N/A',
-      applicantName: app.name || 'Applicant',
-      applicantEmail: app.email || 'unknown@example.com',
-      applicantContact: app.contact || app.phone || 'N/A',
-      message: app.message || ''
-    });
-    await booked.save();
-    // remove application and remove tuition from public view by deleting it
-    await AppliedTuition.findByIdAndDelete(appId);
-    await Tuition.findByIdAndDelete(tuition._id);
-    res.json({ msg: 'Application verified and tuition booked', booked });
+      const tuition = await Tuition.findByPk(app.TuitionId, { transaction });
+      if (!tuition) {
+        await transaction.rollback();
+        return res.status(404).json({ msg: 'Tuition not found' });
+      }
+
+      const booked = await BookedTuition.create(
+        {
+          AppliedTuitionId: app.AppliedTuitionId,
+          TuitionId: tuition.TuitionId,
+          Title: tuition.Title || tuition.Subject || 'Tuition',
+          Subject: tuition.Subject || 'General',
+          Days: tuition.Days || 'To be arranged',
+          Salary: tuition.Salary || 'Negotiable',
+          Location: tuition.Location || 'Unknown',
+          Description: tuition.Description || '',
+          Contact: tuition.Contact || 'N/A',
+          ApplicantName: app.Name || 'Applicant',
+          ApplicantEmail: normalizeEmail(app.Email || 'unknown@example.com'),
+          ApplicantContact: app.Contact || 'N/A',
+          Message: app.Message || '',
+        },
+        { transaction },
+      );
+
+      app.Status = 'Booked';
+      await app.save({ transaction });
+
+      tuition.IsActive = false;
+      await tuition.save({ transaction });
+
+      await transaction.commit();
+      return res.json({ msg: 'Application verified and tuition booked', booked });
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
   }catch(err){ res.status(500).json({ error: err.message }); }
 }
 
 export const unbookTuition = async (req, res) => {
   try{
-    const isAdmin = await isAdminFromReq(req);
-    if(!isAdmin) return res.status(403).json({ msg: 'Forbidden' });
-    const id = req.params.id;
-    const booked = await BookedTuition.findById(id);
-    if(!booked) return res.status(404).json({ msg: 'Booked tuition not found' });
+    if (!isAdminFromReq(req)) return res.status(403).json({ msg: 'Forbidden' });
 
-    // recreate tuition record so it becomes visible to users again
-    const tuition = new Tuition({
-      title: booked.title || booked.subject || 'Tuition',
-      subject: booked.subject || 'General',
-      days: booked.days || 'To be arranged',
-      salary: booked.salary || 'Negotiable',
-      location: booked.location || 'Unknown',
-      description: booked.description || '',
-      contact: booked.contact || 'N/A',
-      postedBy: 'admin'
-    });
-    await tuition.save();
-    await BookedTuition.findByIdAndDelete(id);
-    res.json({ msg: 'Tuition unbooked and visible again', tuition });
+    const id = req.params.id;
+    const transaction = await db.sequelize.transaction();
+    try {
+      const booked = await BookedTuition.findByPk(id, { transaction });
+      if (!booked) {
+        await transaction.rollback();
+        return res.status(404).json({ msg: 'Booked tuition not found' });
+      }
+
+      const tuition = booked.TuitionId ? await Tuition.findByPk(booked.TuitionId, { transaction }) : null;
+      if (tuition) {
+        tuition.IsActive = true;
+        await tuition.save({ transaction });
+      }
+
+      if (booked.AppliedTuitionId) {
+        const app = await AppliedTuition.findByPk(booked.AppliedTuitionId, { transaction });
+        if (app) {
+          app.Status = 'Pending';
+          await app.save({ transaction });
+        }
+      }
+
+      await booked.destroy({ transaction });
+      await transaction.commit();
+      res.json({ msg: 'Tuition unbooked and visible again', tuition });
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
   }catch(err){ res.status(500).json({ error: err.message }); }
 }

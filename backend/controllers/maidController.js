@@ -1,51 +1,60 @@
-import Maid from '../models/Maid.js';
-import AppliedMaid from '../models/AppliedMaid.js';
-import BookedMaid from '../models/BookedMaid.js';
-import jwt from 'jsonwebtoken';
-
-const ADMIN_CODE = process.env.ADMIN_CODE || 'choton2025';
-const JWT_SECRET = process.env.JWT_SECRET || 'dev_jwt_secret';
-
-async function isAdminFromReq(req){
-  let isAdmin = false;
-  const authHeader = req.headers.authorization || '';
-  if (authHeader.startsWith('Bearer ')) {
-    const token = authHeader.slice(7);
-    try {
-      const payload = jwt.verify(token, JWT_SECRET);
-      if (payload && payload.role === 'admin') isAdmin = true;
-    } catch (err) { }
-  }
-  const adminCode = req.body.adminCode || req.query.adminCode;
-  if (!isAdmin && adminCode === ADMIN_CODE) isAdmin = true;
-  return isAdmin;
-}
+import { AppliedMaid, BookedMaid, Maid, db } from '../db/models.js';
+import { Op } from 'sequelize';
+import { isAdminFromReq, normalizeEmail } from '../utils/auth.js';
 
 export const listMaids = async (req, res) => {
   try{
-    const list = await Maid.find().sort({ createdAt: -1 });
-    res.json(list);
+    const list = await Maid.findAll({ where: { IsActive: true }, order: [['CreatedAt', 'DESC']] });
+    res.json(
+      list.map((maid) => ({
+        _id: maid.MaidId,
+        name: maid.Name,
+        hourlyRate: maid.HourlyRate,
+        location: maid.Location,
+        description: maid.Description,
+        contact: maid.Contact,
+        createdAt: maid.CreatedAt,
+      })),
+    );
   }catch(err){ res.status(500).json({ error: err.message }); }
 };
 
 export const createMaid = async (req, res) => {
   try{
-    const isAdmin = await isAdminFromReq(req);
-    if(!isAdmin) return res.status(403).json({ msg: 'Forbidden' });
+    if (!isAdminFromReq(req)) return res.status(403).json({ msg: 'Forbidden' });
+
     const { name, hourlyRate, location, description, contact } = req.body;
     if(!name || !hourlyRate) return res.status(400).json({ msg: 'name and hourlyRate required' });
-    const maid = new Maid({ name, hourlyRate, location, description, contact });
-    await maid.save();
-    res.status(201).json({ msg: 'Maid added', maid });
+
+    const maid = await Maid.create({
+      Name: name,
+      HourlyRate: hourlyRate,
+      Location: location || '',
+      Description: description || '',
+      Contact: contact || '',
+    });
+
+    res.status(201).json({
+      msg: 'Maid added',
+      maid: {
+        _id: maid.MaidId,
+        name: maid.Name,
+        hourlyRate: maid.HourlyRate,
+        location: maid.Location,
+        description: maid.Description,
+        contact: maid.Contact,
+        createdAt: maid.CreatedAt,
+      },
+    });
   }catch(err){ res.status(500).json({ error: err.message }); }
 };
 
 export const deleteMaid = async (req, res) => {
   try{
-    const isAdmin = await isAdminFromReq(req);
-    if(!isAdmin) return res.status(403).json({ msg: 'Forbidden' });
+    if (!isAdminFromReq(req)) return res.status(403).json({ msg: 'Forbidden' });
+
     const id = req.params.id;
-    await Maid.findByIdAndDelete(id);
+    await Maid.destroy({ where: { MaidId: id } });
     res.json({ msg: 'Deleted' });
   }catch(err){ res.status(500).json({ error: err.message }); }
 };
@@ -55,12 +64,19 @@ export const createMaidApplication = async (req, res) => {
   try{
     const { maidId, name, email, contact, message } = req.body;
     console.log('createMaidApplication body:', { maidId, name, email, contact });
-  if(!maidId || !name || !email || !contact) return res.status(400).json({ msg: 'maidId, name, email and contact required' });
-  // ensure maid exists
-  const maid = await Maid.findById(maidId);
-  if(!maid) return res.status(404).json({ msg: 'Maid not found' });
-  const app = new AppliedMaid({ maidId, name, email, contact, message });
-    await app.save();
+    if(!maidId || !name || !email || !contact) return res.status(400).json({ msg: 'maidId, name, email and contact required' });
+
+    const maid = await Maid.findByPk(maidId);
+    if(!maid || !maid.IsActive) return res.status(404).json({ msg: 'Maid not found' });
+
+    const app = await AppliedMaid.create({
+      MaidId: maidId,
+      Name: name,
+      Email: normalizeEmail(email),
+      Contact: contact,
+      Message: message || '',
+    });
+
     res.status(201).json({ msg: 'Maid booking request submitted', application: app });
   }catch(err){ res.status(500).json({ error: err.message }); }
 };
@@ -68,14 +84,14 @@ export const createMaidApplication = async (req, res) => {
 export const deleteMaidApplication = async (req, res) => {
   try{
     const id = req.params.id;
-    await AppliedMaid.findByIdAndDelete(id);
+    await AppliedMaid.destroy({ where: { AppliedMaidId: id } });
     res.json({ msg: 'Deleted' });
   }catch(err){ res.status(500).json({ error: err.message }); }
 }
 
 export const listMaidApplications = async (req, res) => {
   try{
-    const list = await AppliedMaid.find().sort({ createdAt: -1 });
+    const list = await AppliedMaid.findAll({ include: [{ model: Maid }], order: [['CreatedAt', 'DESC']] });
     res.json(list);
   }catch(err){ res.status(500).json({ error: err.message }); }
 };
@@ -83,60 +99,104 @@ export const listMaidApplications = async (req, res) => {
 // admin verifies application -> moves it to BookedMaid and deletes original Maid and application
 export const verifyMaidApplication = async (req, res) => {
   try{
-    const isAdmin = await isAdminFromReq(req);
-    if(!isAdmin) return res.status(403).json({ msg: 'Forbidden' });
-    const appId = req.params.id;
-    const app = await AppliedMaid.findById(appId);
-    if(!app) return res.status(404).json({ msg: 'Application not found' });
-    const maid = await Maid.findById(app.maidId);
-    if(!maid) return res.status(404).json({ msg: 'Maid not found' });
+    if (!isAdminFromReq(req)) return res.status(403).json({ msg: 'Forbidden' });
 
-    // Create booked record without marking a fixed busy duration
-    const booked = new BookedMaid({
-      maidRef: maid._id,
-      name: maid.name || 'Maid',
-      hourlyRate: maid.hourlyRate || 'Negotiable',
-      location: maid.location || 'Unknown',
-      contact: maid.contact || 'N/A',
-      applicantName: app.name || 'Applicant',
-      applicantEmail: app.email || 'unknown@example.com',
-      applicantContact: app.contact || 'N/A',
-      message: app.message || '',
-      // busyUntil intentionally left unset
-    });
-    await booked.save();
-    await AppliedMaid.findByIdAndDelete(appId);
-    // Do not delete the original Maid entry — keep listing for admin to manage
-    res.json({ msg: 'Maid booking verified and marked busy', booked });
+    const appId = req.params.id;
+    const transaction = await db.sequelize.transaction();
+    try {
+      const app = await AppliedMaid.findByPk(appId, { transaction });
+      if (!app) {
+        await transaction.rollback();
+        return res.status(404).json({ msg: 'Application not found' });
+      }
+
+      const alreadyBooked = await BookedMaid.findOne({ where: { AppliedMaidId: appId }, transaction });
+      if (alreadyBooked) {
+        await transaction.rollback();
+        return res.status(409).json({ msg: 'Application already booked' });
+      }
+
+      const maid = await Maid.findByPk(app.MaidId, { transaction });
+      if (!maid) {
+        await transaction.rollback();
+        return res.status(404).json({ msg: 'Maid not found' });
+      }
+
+      const booked = await BookedMaid.create(
+        {
+          AppliedMaidId: app.AppliedMaidId,
+          MaidId: maid.MaidId,
+          Name: maid.Name || 'Maid',
+          HourlyRate: maid.HourlyRate || 'Negotiable',
+          Location: maid.Location || 'Unknown',
+          Contact: maid.Contact || 'N/A',
+          ApplicantName: app.Name || 'Applicant',
+          ApplicantEmail: app.Email || 'unknown@example.com',
+          ApplicantContact: app.Contact || 'N/A',
+          Message: app.Message || '',
+        },
+        { transaction },
+      );
+
+      app.Status = 'Booked';
+      await app.save({ transaction });
+
+      maid.IsActive = false;
+      await maid.save({ transaction });
+
+      await transaction.commit();
+      res.json({ msg: 'Maid booking verified and marked busy', booked });
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
   }catch(err){ res.status(500).json({ error: err.message }); }
 };
 
 // admin unbook busy maid early -> recreate maid and remove booked record
 export const unbookMaid = async (req, res) => {
   try{
-    const isAdmin = await isAdminFromReq(req);
-    if(!isAdmin) return res.status(403).json({ msg: 'Forbidden' });
-    const id = req.params.id;
-    const booked = await BookedMaid.findById(id);
-    if(!booked) return res.status(404).json({ msg: 'Booked maid not found' });
+    if (!isAdminFromReq(req)) return res.status(403).json({ msg: 'Forbidden' });
 
-    const maid = new Maid({
-      name: booked.name || 'Maid',
-      hourlyRate: booked.hourlyRate || 'Negotiable',
-      location: booked.location || '',
-      description: '',
-      contact: booked.contact || 'N/A'
-    });
-    await maid.save();
-    await BookedMaid.findByIdAndDelete(id);
-    res.json({ msg: 'Maid is available again', maid });
+    const id = req.params.id;
+    const transaction = await db.sequelize.transaction();
+    try {
+      const booked = await BookedMaid.findByPk(id, { transaction });
+      if (!booked) {
+        await transaction.rollback();
+        return res.status(404).json({ msg: 'Booked maid not found' });
+      }
+
+      if (booked.MaidId) {
+        const maid = await Maid.findByPk(booked.MaidId, { transaction });
+        if (maid) {
+          maid.IsActive = true;
+          await maid.save({ transaction });
+        }
+      }
+
+      if (booked.AppliedMaidId) {
+        const app = await AppliedMaid.findByPk(booked.AppliedMaidId, { transaction });
+        if (app) {
+          app.Status = 'Pending';
+          await app.save({ transaction });
+        }
+      }
+
+      await booked.destroy({ transaction });
+      await transaction.commit();
+      res.json({ msg: 'Maid is available again' });
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
   }catch(err){ res.status(500).json({ error: err.message }); }
 };
 
 // list busy maids
 export const listBookedMaids = async (req, res) => {
   try{
-    const list = await BookedMaid.find().sort({ bookedAt: -1 });
+    const list = await BookedMaid.findAll({ order: [['BookedAt', 'DESC']] });
     res.json(list);
   }catch(err){ res.status(500).json({ error: err.message }); }
 };
@@ -145,20 +205,23 @@ export const listBookedMaids = async (req, res) => {
 export const releaseExpiredBookedMaids = async (req, res) => {
   try{
     const now = new Date();
-    const expired = await BookedMaid.find({ busyUntil: { $lte: now } });
-    const recreated = [];
-    for(const b of expired){
-      const maid = new Maid({
-        name: b.name || 'Maid',
-        hourlyRate: b.hourlyRate || 'Negotiable',
-        location: b.location || '',
-        description: '',
-        contact: b.contact || 'N/A'
-      });
-      await maid.save();
-      await BookedMaid.findByIdAndDelete(b._id);
-      recreated.push(maid);
+    const expired = await BookedMaid.findAll({
+      where: { BusyUntil: { [Op.lte]: now } },
+    });
+
+    let released = 0;
+    for (const booked of expired) {
+      if (booked.MaidId) {
+        const maid = await Maid.findByPk(booked.MaidId);
+        if (maid) {
+          maid.IsActive = true;
+          await maid.save();
+        }
+      }
+      await booked.destroy();
+      released += 1;
     }
-    res.json({ msg: 'Released expired busy maids', count: recreated.length, recreated });
+
+    res.json({ msg: 'Released expired busy maids', count: released });
   }catch(err){ res.status(500).json({ error: err.message }); }
 };

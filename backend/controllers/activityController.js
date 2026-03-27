@@ -1,76 +1,74 @@
+import {
+  AppliedMaid,
+  AppliedTuition,
+  BookedMaid,
+  BookedTuition,
+  HouseRentListing,
+  Maid,
+  RoommateListing,
+  Tuition,
+} from '../db/models.js';
+import { normalizeEmail } from '../utils/auth.js';
 
-
-import BookedMaid from '../models/BookedMaid.js';
-import BookedTuition from '../models/BookedTuition.js';
-import AppliedMaid from '../models/AppliedMaid.js';
-import AppliedTuition from '../models/AppliedTuition.js';
-import RoommateListing from '../models/RoommateListing.js';
-import HouseRentListing from '../models/HouseRentListing.js';
-import Tuition from '../models/Tuition.js';
-import Maid from '../models/Maid.js';
-
-
-// GET /api/activity/:userEmail
 export const getUserActivity = async (req, res) => {
-	const { userEmail } = req.params;
-	if (!userEmail) return res.status(400).json({ error: 'userEmail required' });
-	try {
-		// Booked Maids
-		const bookedMaids = await BookedMaid.find({ applicantEmail: userEmail }).sort({ bookedAt: -1 }).limit(5);
-		// Booked Tuitions
-		const bookedTuitions = await BookedTuition.find({ applicantEmail: userEmail }).sort({ bookedAt: -1 }).limit(5);
+  const { userEmail } = req.params;
+  if (!userEmail) return res.status(400).json({ error: 'userEmail required' });
 
-		// Applied Maids (populate maid details)
-		const appliedMaidsRaw = await AppliedMaid.find({ email: userEmail }).sort({ createdAt: -1 }).limit(5);
-		const appliedMaids = await Promise.all(appliedMaidsRaw.map(async (app) => {
-			let maid = null;
-			try { maid = await Maid.findById(app.maidId); } catch {}
-			return {
-				...app.toObject(),
-				listingName: maid ? maid.name : app.name,
-				hourlyRate: maid ? maid.hourlyRate : undefined,
-				location: maid ? maid.location : undefined,
-				description: maid ? maid.description : undefined,
-				status: 'applied',
-			};
-		}));
+  try {
+    const normalizedEmail = normalizeEmail(userEmail);
 
-		// Applied Tuitions (populate tuition details)
-		const appliedTuitionsRaw = await AppliedTuition.find({ email: userEmail }).sort({ createdAt: -1 }).limit(5);
-		const appliedTuitions = await Promise.all(appliedTuitionsRaw.map(async (app) => {
-			let tuition = null;
-			try { tuition = await Tuition.findById(app.tuitionId); } catch {}
-			return {
-				...app.toObject(),
-				listingTitle: tuition ? tuition.title : app.name,
-				subject: tuition ? tuition.subject : undefined,
-				days: tuition ? tuition.days : undefined,
-				salary: tuition ? tuition.salary : undefined,
-				location: tuition ? tuition.location : undefined,
-				description: tuition ? tuition.description : undefined,
-				contact: tuition ? tuition.contact : undefined,
-				status: 'applied',
-			};
-		}));
+    const [
+      bookedMaids,
+      bookedTuitions,
+      appliedMaids,
+      appliedTuitions,
+      roommateListings,
+      houseRentListings,
+    ] = await Promise.all([
+      BookedMaid.findAll({ where: { ApplicantEmail: normalizedEmail }, order: [['BookedAt', 'DESC']], limit: 5 }),
+      BookedTuition.findAll({ where: { ApplicantEmail: normalizedEmail }, order: [['BookedAt', 'DESC']], limit: 5 }),
+      AppliedMaid.findAll({
+        where: { Email: normalizedEmail },
+        include: [{ model: Maid }],
+        order: [['CreatedAt', 'DESC']],
+        limit: 5,
+      }),
+      AppliedTuition.findAll({
+        where: { Email: normalizedEmail },
+        include: [{ model: Tuition }],
+        order: [['CreatedAt', 'DESC']],
+        limit: 5,
+      }),
+      RoommateListing.findAll({ where: { Email: normalizedEmail }, order: [['CreatedAt', 'DESC']], limit: 5 }),
+      HouseRentListing.findAll({ where: { Contact: normalizedEmail }, order: [['CreatedAt', 'DESC']], limit: 5 }),
+    ]);
 
-		// Roommate Listings
-		const roommateListings = await RoommateListing.find({ email: userEmail }).sort({ createdAt: -1 }).limit(5);
-		// House Rent Listings
-		const houseRentListings = await HouseRentListing.find({ contact: userEmail }).sort({ createdAt: -1 }).limit(5);
-
-		// Add status to booked items
-		const bookedMaidsWithStatus = bookedMaids.map(b => ({ ...b.toObject(), status: 'booked' }));
-		const bookedTuitionsWithStatus = bookedTuitions.map(b => ({ ...b.toObject(), status: 'booked' }));
-
-		res.json({
-			bookedMaids: bookedMaidsWithStatus,
-			bookedTuitions: bookedTuitionsWithStatus,
-			appliedMaids,
-			appliedTuitions,
-			roommateListings,
-			houseRentListings,
-		});
-	} catch (err) {
-		res.status(500).json({ error: 'Failed to fetch activity', details: err.message });
-	}
+    res.json({
+      bookedMaids: bookedMaids.map((b) => ({ ...b.toJSON(), status: 'booked' })),
+      bookedTuitions: bookedTuitions.map((b) => ({ ...b.toJSON(), status: 'booked' })),
+      appliedMaids: appliedMaids.map((app) => ({
+        ...app.toJSON(),
+        listingName: app.Maid ? app.Maid.Name : app.Name,
+        hourlyRate: app.Maid ? app.Maid.HourlyRate : undefined,
+        location: app.Maid ? app.Maid.Location : undefined,
+        description: app.Maid ? app.Maid.Description : undefined,
+        status: 'applied',
+      })),
+      appliedTuitions: appliedTuitions.map((app) => ({
+        ...app.toJSON(),
+        listingTitle: app.Tuition ? app.Tuition.Title : app.Name,
+        subject: app.Tuition ? app.Tuition.Subject : undefined,
+        days: app.Tuition ? app.Tuition.Days : undefined,
+        salary: app.Tuition ? app.Tuition.Salary : undefined,
+        location: app.Tuition ? app.Tuition.Location : undefined,
+        description: app.Tuition ? app.Tuition.Description : undefined,
+        contact: app.Tuition ? app.Tuition.Contact : undefined,
+        status: 'applied',
+      })),
+      roommateListings,
+      houseRentListings,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch activity', details: err.message });
+  }
 };

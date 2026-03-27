@@ -1,7 +1,5 @@
 import jwt from 'jsonwebtoken';
-
-const ADMIN_CODE = process.env.ADMIN_CODE || 'choton2025';
-const JWT_SECRET = process.env.JWT_SECRET || 'dev_jwt_secret';
+import { ADMIN_CODE, JWT_SECRET } from '../utils/auth.js';
 
 export const adminLogin = (req, res) => {
   const { adminCode } = req.body;

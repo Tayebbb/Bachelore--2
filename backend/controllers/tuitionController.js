@@ -1,13 +1,27 @@
-import Tuition from '../models/Tuition.js';
-import jwt from 'jsonwebtoken';
-
-const ADMIN_CODE = process.env.ADMIN_CODE || 'choton2025';
-const JWT_SECRET = process.env.JWT_SECRET || 'dev_jwt_secret';
+import { Tuition } from '../db/models.js';
+import { isAdminFromReq } from '../utils/auth.js';
 
 export const getTuitions = async (req, res) => {
   try {
-    const tuitions = await Tuition.find().sort({ createdAt: -1 });
-    res.json(tuitions);
+    const tuitions = await Tuition.findAll({
+      where: { IsActive: true },
+      order: [['CreatedAt', 'DESC']],
+    });
+
+    res.json(
+      tuitions.map((t) => ({
+        _id: t.TuitionId,
+        title: t.Title,
+        subject: t.Subject,
+        days: t.Days,
+        salary: t.Salary,
+        location: t.Location,
+        description: t.Description,
+        contact: t.Contact,
+        postedBy: t.PostedBy,
+        createdAt: t.CreatedAt,
+      })),
+    );
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -15,20 +29,10 @@ export const getTuitions = async (req, res) => {
 
 export const createTuition = async (req, res) => {
   try {
-    // Allow Authorization: Bearer <token> or adminCode in body/query
-    let isAdmin = false;
-    const authHeader = req.headers.authorization || '';
-    if (authHeader.startsWith('Bearer ')) {
-      const token = authHeader.slice(7);
-      try {
-        const payload = jwt.verify(token, JWT_SECRET);
-        if (payload && payload.role === 'admin') isAdmin = true;
-      } catch (err) { /* invalid token */ }
-    }
-    const adminCode = req.body.adminCode || req.query.adminCode;
-    if (!isAdmin && adminCode !== ADMIN_CODE) {
+    if (!isAdminFromReq(req)) {
       return res.status(403).json({ msg: 'Forbidden: Admins only' });
     }
+
     const { title, subject, days, salary, location, description, contact } = req.body;
     if (!title || !subject || !days || !salary || !location || !description || !contact) {
       return res.status(400).json({ msg: 'All fields are required' });
@@ -38,18 +42,32 @@ export const createTuition = async (req, res) => {
     if (!PHONE_RE.test(contact)) {
       return res.status(400).json({ msg: 'Contact must be an 11-digit phone number starting with 01' });
     }
-    const tuition = new Tuition({
-      title,
-      subject,
-      days,
-      salary,
-      location,
-      description,
-      contact,
-      postedBy: 'admin'
+    const tuition = await Tuition.create({
+      Title: title,
+      Subject: subject,
+      Days: days,
+      Salary: salary,
+      Location: location,
+      Description: description,
+      Contact: contact,
+      PostedBy: 'admin',
     });
-    await tuition.save();
-    res.status(201).json({ msg: 'Tuition posted', tuition });
+
+    res.status(201).json({
+      msg: 'Tuition posted',
+      tuition: {
+        _id: tuition.TuitionId,
+        title: tuition.Title,
+        subject: tuition.Subject,
+        days: tuition.Days,
+        salary: tuition.Salary,
+        location: tuition.Location,
+        description: tuition.Description,
+        contact: tuition.Contact,
+        postedBy: tuition.PostedBy,
+        createdAt: tuition.CreatedAt,
+      },
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
