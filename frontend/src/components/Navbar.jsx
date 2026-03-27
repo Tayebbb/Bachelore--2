@@ -56,6 +56,8 @@ export default function Navbar(){
           <li className="nav-item"><Link className="nav-link" to="/tuition">Tuition</Link></li>
           <li className="nav-item"><Link className="nav-link" to="/bills">Bills</Link></li>
           <li className="nav-item"><Link className="nav-link" to="/marketplace">Marketplace</Link></li>
+          <li className="nav-item"><Link className="nav-link" to="/subscription-payments">Payments</Link></li>
+          <li className="nav-item"><Link className="nav-link" to="/activities">Activity Log</Link></li>
           {(!authed || location.pathname === '/') ? (
             <>
               <li className="nav-item mt-2 mt-lg-0">

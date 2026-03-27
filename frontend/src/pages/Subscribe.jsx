@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { isAuthed } from "../lib/auth";
+import { getUser } from "../lib/auth";
 
 export default function Subscribe() {
   const navigate = useNavigate();
@@ -43,9 +44,27 @@ export default function Subscribe() {
                   onSubmit={async (e) => {
                     e.preventDefault();
                     setStatus("loading");
-                    // mock verification delay
-                    await new Promise((r) => setTimeout(r, 900));
-                    setStatus("success");
+                    try {
+                      const user = getUser();
+                      const userId = user?.id || user?._id;
+                      if (!userId) {
+                        setStatus("idle");
+                        return;
+                      }
+
+                      const res = await fetch('/api/subscription', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId, amount: 99, status: 'paid', reference, bkash }),
+                      });
+
+                      if (!res.ok) {
+                        throw new Error('Payment submission failed');
+                      }
+                      setStatus("success");
+                    } catch (_err) {
+                      setStatus("idle");
+                    }
                   }}
                 >
                   <div className="mb-2">
@@ -121,7 +140,7 @@ export default function Subscribe() {
 
                   {status === "success" && (
                     <div className="alert alert-success mt-3">
-                      Thanks — subscription active (mock)
+                      Thanks - subscription payment recorded.
                     </div>
                   )}
                 </form>

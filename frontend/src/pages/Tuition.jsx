@@ -111,10 +111,13 @@ function ApplyModal(){
 
   const submit = async () => {
     if (!tuition) return;
+    const user = getUser();
+    const userId = user?.id || user?._id;
   if (!name || !email || !contact || !message.trim()) { setStatus('Please provide name, email, contact, and profile'); return; }
+    if (!userId) { setStatus('Please login first'); return; }
     setStatus('Submitting...');
     try{
-      const res = await axios.post('/api/applied-tuitions', { tuitionId: tuition._id, name, email, contact, message });
+      const res = await axios.post('/api/applied-tuitions', { tuitionId: tuition._id, userId, name, email, contact, message });
       setStatus('Application submitted.');
       setName(''); setEmail(''); setMessage('');
       setContact('');

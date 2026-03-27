@@ -18,13 +18,14 @@ export default function MarketplaceForm({ onCreated }) {
     e.preventDefault();
     setStatus('');
     const user = getUser();
-    if (!user || !user.email) { setStatus('Login required'); return; }
+    const userId = user?.id || user?._id;
+    if (!user || !user.email || !userId) { setStatus('Login required'); return; }
     if (!title || !description || !price || !contact) { setStatus('All fields required'); return; }
     try {
       const res = await fetch('/api/marketplace', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, description, price, contact, image, sellerEmail: user.email })
+        body: JSON.stringify({ userId, title, description, price, contact, image, sellerEmail: user.email })
       });
       if (!res.ok) throw new Error('Failed');
       setTitle(''); setDescription(''); setPrice(''); setImage('');

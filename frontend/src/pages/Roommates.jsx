@@ -179,11 +179,14 @@ function RoommateApplyModal(){
   },[])
 
   const submit = async () => {
+    const user = getUser();
+    const userId = user?.id || user?._id;
     if(!listing) return;
+    if(!userId) { setStatus('Please login first'); return; }
     if(!name || !email) { setStatus('Please provide name and email'); return; }
     setStatus('Submitting...');
     try{
-      const body = { listingId: listing._id, applicantId: localStorage.getItem('userId'), name, email, contact, message };
+      const body = { listingId: listing._id, userId, name, email, contact, message };
       const res = await fetch('/api/roommates/applied', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const data = await res.json();
       if(res.ok){ setStatus('Application submitted'); setTimeout(()=>{ setVisible(false); setStatus(''); }, 1200); }

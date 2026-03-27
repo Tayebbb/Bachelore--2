@@ -96,11 +96,14 @@ function MaidApplyModal(){
   },[])
 
   const submit = async () => {
+    const user = getUser();
+    const userId = user?.id || user?._id;
     if(!maid || !maid._id){ alert('This maid is a sample/mock entry and cannot be booked. Create a real maid from Admin first.'); return; }
+    if(!userId){ setStatus('Please login first'); return; }
     if (!name || !email || !contact) { setStatus('Please provide name, email and contact'); return; }
     setStatus('Submitting...');
     try{
-      const res = await fetch('/api/applied-maids', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ maidId: maid._id, name, email, contact, message }) });
+      const res = await fetch('/api/applied-maids', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ maidId: maid._id, userId, name, email, contact, message }) });
       const data = await res.json();
       if(res.ok){ setStatus('Booking request submitted. Admin will review it.'); setTimeout(()=>{ setVisible(false); setStatus(''); }, 1500); }
       else { setStatus(data.msg || data.error || 'Submission failed'); }

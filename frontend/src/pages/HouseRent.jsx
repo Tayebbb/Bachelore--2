@@ -153,8 +153,8 @@ function HouseContactModal() {
     setStatus("Sending...");
     try {
       const payload = {
-        senderId: user._id || user.id || user._id,
-        receiverId: listing.ownerRef || listing.owner || null,
+        userId: user._id || user.id,
+        houseId: listing._id || listing.house_id,
         message,
       };
       await axios.post("/api/house-rent/contact", payload);
