@@ -155,21 +155,8 @@ export const AppliedRoommate = sequelize.define(
   { ...commonModelOptions, tableName: 'AppliedRoommates', indexes: [{ fields: ['Status'] }] },
 );
 
-export const AppliedToHost = sequelize.define(
-  'AppliedToHost',
-  {
-    AppliedToHostId: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-    Name: { type: DataTypes.STRING(150), allowNull: true },
-    Email: { type: DataTypes.STRING(150), allowNull: true },
-    Message: { type: DataTypes.TEXT, allowNull: true },
-    Status: {
-      type: DataTypes.ENUM('Pending', 'Approved', 'Rejected', 'Booked'),
-      allowNull: false,
-      defaultValue: 'Pending',
-    },
-  },
-  { ...commonModelOptions, tableName: 'AppliedToHosts', indexes: [{ fields: ['Email'] }, { fields: ['Status'] }] },
-);
+
+// Removed AppliedToHost model because no such table exists in the database.
 
 export const BookedRoommate = sequelize.define(
   'BookedRoommate',
@@ -182,13 +169,11 @@ export const BookedRoommate = sequelize.define(
     RoomsAvailable: { type: DataTypes.STRING(50), allowNull: true },
     Details: { type: DataTypes.TEXT, allowNull: true },
     ApplicantName: { type: DataTypes.STRING(150), allowNull: false },
-    ApplicantEmail: { type: DataTypes.STRING(150), allowNull: false },
     ApplicantContact: { type: DataTypes.STRING(80), allowNull: true },
     Message: { type: DataTypes.TEXT, allowNull: true },
-    BookedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
     Status: { type: DataTypes.ENUM('Booked', 'Completed', 'Cancelled'), allowNull: false, defaultValue: 'Booked' },
   },
-  { ...commonModelOptions, tableName: 'BookedRoommates', indexes: [{ fields: ['ApplicantEmail'] }, { fields: ['BookedAt'] }] },
+  { ...commonModelOptions, tableName: 'BookedRoommates' },
 );
 
 export const HouseRentListing = sequelize.define(
@@ -198,37 +183,21 @@ export const HouseRentListing = sequelize.define(
     Title: { type: DataTypes.STRING(180), allowNull: false },
     Description: { type: DataTypes.TEXT, allowNull: true },
     Location: { type: DataTypes.STRING(180), allowNull: true },
-    Price: { type: DataTypes.DECIMAL(12, 2), allowNull: true },
     Rooms: { type: DataTypes.INTEGER, allowNull: true },
     Contact: { type: DataTypes.STRING(150), allowNull: true },
-    Verified: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   },
   {
     ...commonModelOptions,
     tableName: 'HouseRentListings',
-    indexes: [{ fields: ['Verified'] }, { fields: ['Location'] }, { fields: ['Price'] }],
+    indexes: [{ fields: ['Location'] }],
   },
 );
 
-export const HouseRentImage = sequelize.define(
-  'HouseRentImage',
-  {
-    HouseRentImageId: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-    ImageUrl: { type: DataTypes.STRING(512), allowNull: false },
-    SortOrder: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
-  },
-  { ...commonModelOptions, tableName: 'HouseRentImages' },
-);
 
-export const Contact = sequelize.define(
-  'Contact',
-  {
-    ContactId: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-    Message: { type: DataTypes.TEXT, allowNull: false },
-    Status: { type: DataTypes.ENUM('Unread', 'Read', 'Archived'), allowNull: false, defaultValue: 'Unread' },
-  },
-  { ...commonModelOptions, tableName: 'Contacts', indexes: [{ fields: ['Status'] }] },
-);
+// Removed HouseRentImage model because no such table exists in the database.
+
+
+// Removed Contact model because no such table exists in the database.
 
 export const MarketplaceListing = sequelize.define(
   'MarketplaceListing',
@@ -239,14 +208,12 @@ export const MarketplaceListing = sequelize.define(
     Price: { type: DataTypes.DECIMAL(12, 2), allowNull: false },
     Image: { type: DataTypes.STRING(512), allowNull: true },
     Contact: { type: DataTypes.STRING(150), allowNull: false },
-    SellerEmail: { type: DataTypes.STRING(150), allowNull: false },
-    BuyerEmail: { type: DataTypes.STRING(150), allowNull: true },
     Status: { type: DataTypes.ENUM('available', 'sold'), allowNull: false, defaultValue: 'available' },
   },
   {
     ...commonModelOptions,
     tableName: 'MarketplaceListings',
-    indexes: [{ fields: ['Status'] }, { fields: ['SellerEmail'] }, { fields: ['BuyerEmail'] }],
+    indexes: [{ fields: ['Status'] }],
   },
 );
 
@@ -254,7 +221,6 @@ export const SubscriptionPayment = sequelize.define(
   'SubscriptionPayment',
   {
     SubscriptionPaymentId: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-    UserEmail: { type: DataTypes.STRING(150), allowNull: false },
     Amount: { type: DataTypes.DECIMAL(12, 2), allowNull: false },
     PaymentMethod: { type: DataTypes.STRING(80), allowNull: false },
     TransactionId: { type: DataTypes.STRING(150), allowNull: true },
@@ -266,7 +232,7 @@ export const SubscriptionPayment = sequelize.define(
     PaidAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
     Details: { type: DataTypes.JSON, allowNull: true },
   },
-  { ...commonModelOptions, tableName: 'SubscriptionPayments', indexes: [{ fields: ['UserEmail'] }, { fields: ['Status'] }] },
+  { ...commonModelOptions, tableName: 'SubscriptionPayments', indexes: [{ fields: ['Status'] }] },
 );
 
 export const Notification = sequelize.define(
@@ -371,38 +337,8 @@ export function applyAssociations() {
     onUpdate: 'CASCADE',
   });
 
-  RoommateListing.hasMany(AppliedToHost, {
-    foreignKey: { name: 'RoommateListingId', allowNull: false },
-    onDelete: 'CASCADE',
-    onUpdate: 'CASCADE',
-  });
-  AppliedToHost.belongsTo(RoommateListing, {
-    foreignKey: { name: 'RoommateListingId', allowNull: false },
-    onDelete: 'CASCADE',
-    onUpdate: 'CASCADE',
-  });
 
-  User.hasMany(AppliedToHost, {
-    foreignKey: { name: 'ApplicantUserId', allowNull: true },
-    onDelete: 'SET NULL',
-    onUpdate: 'CASCADE',
-  });
-  AppliedToHost.belongsTo(User, {
-    foreignKey: { name: 'ApplicantUserId', allowNull: true },
-    onDelete: 'SET NULL',
-    onUpdate: 'CASCADE',
-  });
-
-  AppliedToHost.hasOne(BookedRoommate, {
-    foreignKey: { name: 'AppliedToHostId', allowNull: true, unique: true },
-    onDelete: 'SET NULL',
-    onUpdate: 'CASCADE',
-  });
-  BookedRoommate.belongsTo(AppliedToHost, {
-    foreignKey: { name: 'AppliedToHostId', allowNull: true, unique: true },
-    onDelete: 'SET NULL',
-    onUpdate: 'CASCADE',
-  });
+  // Removed all associations to AppliedToHost since the table/model does not exist.
 
   AppliedRoommate.hasOne(BookedRoommate, {
     foreignKey: { name: 'AppliedRoommateId', allowNull: true, unique: true },
@@ -463,42 +399,11 @@ export function applyAssociations() {
     onUpdate: 'CASCADE',
   });
 
-  HouseRentListing.hasMany(HouseRentImage, {
-    foreignKey: { name: 'HouseRentListingId', allowNull: false },
-    onDelete: 'CASCADE',
-    onUpdate: 'CASCADE',
-  });
-  HouseRentImage.belongsTo(HouseRentListing, {
-    foreignKey: { name: 'HouseRentListingId', allowNull: false },
-    onDelete: 'CASCADE',
-    onUpdate: 'CASCADE',
-  });
 
-  User.hasMany(Contact, {
-    foreignKey: { name: 'SenderUserId', allowNull: false },
-    as: 'SentContacts',
-    onDelete: 'CASCADE',
-    onUpdate: 'CASCADE',
-  });
-  Contact.belongsTo(User, {
-    foreignKey: { name: 'SenderUserId', allowNull: false },
-    as: 'Sender',
-    onDelete: 'CASCADE',
-    onUpdate: 'CASCADE',
-  });
+  // Removed all associations to HouseRentImage since the table/model does not exist.
 
-  User.hasMany(Contact, {
-    foreignKey: { name: 'ReceiverUserId', allowNull: false },
-    as: 'ReceivedContacts',
-    onDelete: 'CASCADE',
-    onUpdate: 'CASCADE',
-  });
-  Contact.belongsTo(User, {
-    foreignKey: { name: 'ReceiverUserId', allowNull: false },
-    as: 'Receiver',
-    onDelete: 'CASCADE',
-    onUpdate: 'CASCADE',
-  });
+
+  // Removed all associations to Contact since the table/model does not exist.
 }
 
 applyAssociations();
@@ -515,11 +420,8 @@ export const db = {
   BookedMaid,
   RoommateListing,
   AppliedRoommate,
-  AppliedToHost,
   BookedRoommate,
   HouseRentListing,
-  HouseRentImage,
-  Contact,
   MarketplaceListing,
   SubscriptionPayment,
   Notification,

@@ -25,21 +25,31 @@ export const getUserActivity = async (req, res) => {
       roommateListings,
       houseRentListings,
     ] = await Promise.all([
-      BookedMaid.findAll({ where: { ApplicantEmail: normalizedEmail }, order: [['BookedAt', 'DESC']], limit: 5 }),
-      BookedTuition.findAll({ where: { ApplicantEmail: normalizedEmail }, order: [['BookedAt', 'DESC']], limit: 5 }),
+      // BookedMaid: match by ApplicantContact (since no ApplicantEmail), order by createdAt (no BookedAt)
+      BookedMaid.findAll({ where: { ApplicantContact: normalizedEmail }, order: [['createdAt', 'DESC']], limit: 5 }),
+      // BookedTuition: match by user_id (from AppliedTuition), order by confirmed_at
+      BookedTuition.findAll({
+        include: [{ model: AppliedTuition, where: { user_id: normalizedEmail } }],
+        order: [['confirmed_at', 'DESC']],
+        limit: 5,
+      }),
+      // AppliedMaid: match by Contact, order by CreatedAt
       AppliedMaid.findAll({
-        where: { Email: normalizedEmail },
+        where: { Contact: normalizedEmail },
         include: [{ model: Maid }],
         order: [['CreatedAt', 'DESC']],
         limit: 5,
       }),
+      // AppliedTuition: match by user_id, order by applied_at
       AppliedTuition.findAll({
-        where: { Email: normalizedEmail },
+        where: { user_id: normalizedEmail },
         include: [{ model: Tuition }],
-        order: [['CreatedAt', 'DESC']],
+        order: [['applied_at', 'DESC']],
         limit: 5,
       }),
+      // RoommateListing: match by Email, order by CreatedAt
       RoommateListing.findAll({ where: { Email: normalizedEmail }, order: [['CreatedAt', 'DESC']], limit: 5 }),
+      // HouseRentListing: match by Contact, order by CreatedAt
       HouseRentListing.findAll({ where: { Contact: normalizedEmail }, order: [['CreatedAt', 'DESC']], limit: 5 }),
     ]);
 
@@ -56,7 +66,7 @@ export const getUserActivity = async (req, res) => {
       })),
       appliedTuitions: appliedTuitions.map((app) => ({
         ...app.toJSON(),
-        listingTitle: app.Tuition ? app.Tuition.Title : app.Name,
+        listingTitle: app.Tuition ? app.Tuition.Title : undefined,
         subject: app.Tuition ? app.Tuition.Subject : undefined,
         days: app.Tuition ? app.Tuition.Days : undefined,
         salary: app.Tuition ? app.Tuition.Salary : undefined,
