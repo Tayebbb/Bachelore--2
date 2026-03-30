@@ -17,7 +17,7 @@ export default function PublicHome() {
   }, [])
 
   return (
-    <main>
+    <main className="public-home">
       <header className="container container-hero">
         <div className="row align-items-center">
           <div className="col-lg-6">
@@ -47,7 +47,7 @@ export default function PublicHome() {
         </div>
       </header>
 
-      <section className="container py-5">
+      <section className="container py-5 public-home-section">
         <div className="row">
           <div className="col-lg-8">
             <h3 className="panel-title">How it works</h3>
@@ -106,7 +106,7 @@ export default function PublicHome() {
             </div>
           </div>
           <div className="col-lg-4">
-            <div className="gradient-card p-3 text-dark">
+            <div className="gradient-card p-3 text-dark quick-facts-card">
               <h6 className="mb-2">Quick facts</h6>
               <p className="muted small mb-1">Trusted by students and young professionals for organizing daily life.</p>
               <div className="d-flex gap-2 mt-2">
@@ -116,13 +116,15 @@ export default function PublicHome() {
             </div>
             <div className="mt-3">
               <h5 className="panel-title">Announcements</h5>
-              <Announcements items={announcements} />
+              <div className="announcements-shell">
+                <Announcements items={announcements} />
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="container py-5">
+      <section className="container py-5 public-home-section">
         <h3>What users say</h3>
         <div className="testimonials-static mt-3 d-flex gap-3">
           <div className="testimonial-card testimonial p-3">"Quick roommate matches — enjoyed the experience." — Ali</div>

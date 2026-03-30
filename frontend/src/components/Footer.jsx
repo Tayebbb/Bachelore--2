@@ -1,5 +1,4 @@
 import React from 'react'
-import { BRAND } from '../assets/brand'
 
 export default function Footer() {
   return (

@@ -42,40 +42,42 @@ export default function Router(){
   }
   const location = useLocation();
   return (
-    <>
+    <div className="app-layout">
       <Navbar />
-      <Routes>
-        <Route path="/" element={<PublicHome/>} />
-        <Route path="/home" element={<PrivateRoute><Home/></PrivateRoute>} />
-        <Route path="/login" element={<Login/>} />
-        <Route path="/signup" element={<Signup />} />
-        <Route path="/dashboard" element={<div>Dashboard</div>} />
-        <Route path="/roommates" element={<PrivateRoute><Roommates/></PrivateRoute>} />
-        <Route path="/roommate-listings" element={<PrivateRoute><RoommateListings/></PrivateRoute>} />
-        <Route path="/maids" element={<PrivateRoute><Maids/></PrivateRoute>} />
-        <Route path="/tuition" element={<PrivateRoute><Tuition/></PrivateRoute>} />
-        <Route path="/bills" element={<PrivateRoute><Bills/></PrivateRoute>} />
-        <Route path="/marketplace" element={<PrivateRoute><Marketplace/></PrivateRoute>} />
-        <Route path="/item/:id" element={<div>ItemDetail</div>} />
-        <Route path="/post" element={<div>PostItem</div>} />
-        <Route path="/profile" element={<div>Profile</div>} />
-        <Route path="/houserent" element={<PrivateRoute><HouseRent/></PrivateRoute>} />
-        <Route path="/subscription" element={<PrivateRoute><Subscribe/></PrivateRoute>} />
-        <Route path="/subscription-payments" element={<PrivateRoute><SubscriptionPayments/></PrivateRoute>} />
-        <Route path="/activities" element={<PrivateRoute><UserActivities/></PrivateRoute>} />
-        <Route path="/applied-tuitions" element={<PrivateRoute><AppliedTuitions/></PrivateRoute>} />
-        <Route path="/booked-tuitions" element={<PrivateRoute><BookedTuitions/></PrivateRoute>} />
-        <Route path="/applied-maids" element={<PrivateRoute><AppliedMaids/></PrivateRoute>} />
-        <Route path="/booked-maids" element={<PrivateRoute><BookedMaids/></PrivateRoute>} />
-        <Route path="/applied-roommates" element={<PrivateRoute><AppliedRoommates/></PrivateRoute>} />
-        <Route path="/booked-roommates" element={<PrivateRoute><BookedRoommates/></PrivateRoute>} />
-        <Route path="/announcements-all" element={<AnnouncementsAll/>} />
-        <Route path="/admin-login" element={<AdminLogin/>} />
-        <Route path="/admin-dashboard" element={<AdminDashboard/>} />
-        <Route path="*" element={<div>NotFound</div>} />
-      </Routes>
+      <div className="app-content">
+        <Routes>
+          <Route path="/" element={<PublicHome/>} />
+          <Route path="/home" element={<PrivateRoute><Home/></PrivateRoute>} />
+          <Route path="/login" element={<Login/>} />
+          <Route path="/signup" element={<Signup />} />
+          <Route path="/dashboard" element={<div>Dashboard</div>} />
+          <Route path="/roommates" element={<PrivateRoute><Roommates/></PrivateRoute>} />
+          <Route path="/roommate-listings" element={<PrivateRoute><RoommateListings/></PrivateRoute>} />
+          <Route path="/maids" element={<PrivateRoute><Maids/></PrivateRoute>} />
+          <Route path="/tuition" element={<PrivateRoute><Tuition/></PrivateRoute>} />
+          <Route path="/bills" element={<PrivateRoute><Bills/></PrivateRoute>} />
+          <Route path="/marketplace" element={<PrivateRoute><Marketplace/></PrivateRoute>} />
+          <Route path="/item/:id" element={<div>ItemDetail</div>} />
+          <Route path="/post" element={<div>PostItem</div>} />
+          <Route path="/profile" element={<div>Profile</div>} />
+          <Route path="/houserent" element={<PrivateRoute><HouseRent/></PrivateRoute>} />
+          <Route path="/subscription" element={<PrivateRoute><Subscribe/></PrivateRoute>} />
+          <Route path="/subscription-payments" element={<PrivateRoute><SubscriptionPayments/></PrivateRoute>} />
+          <Route path="/activities" element={<PrivateRoute><UserActivities/></PrivateRoute>} />
+          <Route path="/applied-tuitions" element={<PrivateRoute><AppliedTuitions/></PrivateRoute>} />
+          <Route path="/booked-tuitions" element={<PrivateRoute><BookedTuitions/></PrivateRoute>} />
+          <Route path="/applied-maids" element={<PrivateRoute><AppliedMaids/></PrivateRoute>} />
+          <Route path="/booked-maids" element={<PrivateRoute><BookedMaids/></PrivateRoute>} />
+          <Route path="/applied-roommates" element={<PrivateRoute><AppliedRoommates/></PrivateRoute>} />
+          <Route path="/booked-roommates" element={<PrivateRoute><BookedRoommates/></PrivateRoute>} />
+          <Route path="/announcements-all" element={<AnnouncementsAll/>} />
+          <Route path="/admin-login" element={<AdminLogin/>} />
+          <Route path="/admin-dashboard" element={<AdminDashboard/>} />
+          <Route path="*" element={<div>NotFound</div>} />
+        </Routes>
+      </div>
       {/* Only show global Footer if not on signup page */}
       {location.pathname !== '/signup' && <Footer />}
-    </>
+    </div>
   )
 }
