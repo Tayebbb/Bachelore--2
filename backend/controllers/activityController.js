@@ -43,7 +43,7 @@ export const getUserActivity = async (req, res) => {
       HouseRentListing.findAll({ where: { Contact: normalizedEmail }, order: [['CreatedAt', 'DESC']], limit: 5 }),
     ]);
 
-    res.json({
+    return res.json({
       bookedMaids: bookedMaids.map((b) => ({ ...b.toJSON(), status: 'booked' })),
       bookedTuitions: bookedTuitions.map((b) => ({ ...b.toJSON(), status: 'booked' })),
       appliedMaids: appliedMaids.map((app) => ({
@@ -69,6 +69,16 @@ export const getUserActivity = async (req, res) => {
       houseRentListings,
     });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch activity', details: err.message });
+    // Always return a valid object with empty arrays on error
+    return res.json({
+      bookedMaids: [],
+      bookedTuitions: [],
+      appliedMaids: [],
+      appliedTuitions: [],
+      roommateListings: [],
+      houseRentListings: [],
+      error: 'Failed to fetch activity',
+      details: err.message,
+    });
   }
 };

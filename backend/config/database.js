@@ -71,8 +71,8 @@ export async function connectDatabase() {
     await sequelize.authenticate();
     console.log('MSSQL connection established successfully.');
 
-    await sequelize.sync({ alter: true });
-    console.log('Sequelize models synchronized with MSSQL (alter: true).');
+    await sequelize.sync({ alter: false, force: false });
+    console.log('Sequelize models synchronized with MSSQL (no alter, no force).');
   } catch (error) {
     console.error('MSSQL connection or sync failed:', {
       message: error?.message,

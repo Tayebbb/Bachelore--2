@@ -1,3 +1,6 @@
+
+import dotenv from 'dotenv';
+dotenv.config();
 import sql from 'mssql';
 
 const dbConfig = {
@@ -17,6 +20,8 @@ const dbConfig = {
     idleTimeoutMillis: 30000,
   },
 };
+
+console.log('MSSQL dbConfig:', dbConfig);
 
 let poolPromise = null;
 

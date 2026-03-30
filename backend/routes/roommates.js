@@ -3,6 +3,7 @@ import { toggleAvailability, listAppliedRoommates, verifyAppliedRoommate, listRo
 
 const router = express.Router();
 
+import { RoommateListing } from '../db/models.js'; // New: import RoommateListing
 // toggle availability for a user (userId in path)
 // legacy toggle kept for backward compatibility (optional)
 router.post('/:userId/toggle', toggleAvailability);
@@ -58,5 +59,15 @@ router.post('/booked/:id/unbook', async (req, res) => {
 
 // public: list roommate listings (seekers only) - requires userId query to check role
 router.get('/listings', listRoommateListings);
+// New: get listing by listingId
+router.get('/listing/:listingId', async (req, res) => {
+  try {
+    const listing = await RoommateListing.findByPk(req.params.listingId);
+    if (!listing) return res.status(404).json({ msg: 'Listing not found' });
+    res.json(listing);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 export default router;

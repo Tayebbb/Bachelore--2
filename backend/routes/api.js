@@ -582,7 +582,7 @@ router.get('/roommates/:userId/listing', async (req, res) => {
     `);
 
   const row = result.recordset[0];
-  if (!row) return res.status(404).json({ msg: 'Listing not found' });
+  if (!row) return res.json({}); // Always return an object
 
   let pref = {};
   try { pref = row.preference ? JSON.parse(row.preference) : {}; } catch (_) {}

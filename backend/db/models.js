@@ -10,25 +10,14 @@ const commonModelOptions = {
 export const User = sequelize.define(
   'User',
   {
-    UserId: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-    FullName: { type: DataTypes.STRING(150), allowNull: true },
-    Email: { type: DataTypes.STRING(150), allowNull: false, unique: true },
-    Password: { type: DataTypes.STRING(255), allowNull: false },
-    Phone: { type: DataTypes.STRING(30), allowNull: false },
-    University: { type: DataTypes.STRING(150), allowNull: false },
-    Year: { type: DataTypes.STRING(50), allowNull: false },
-    Semester: { type: DataTypes.STRING(50), allowNull: false },
-    EduEmail: { type: DataTypes.STRING(150), allowNull: false },
-    RoommateCategory: {
-      type: DataTypes.ENUM('HostRoommate', 'SeekerRoommate'),
-      allowNull: false,
-      defaultValue: 'SeekerRoommate',
-    },
-    IsAvailableAsHost: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
-    Role: { type: DataTypes.ENUM('Admin', 'User'), allowNull: false, defaultValue: 'User' },
-    IsActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+    user_id: { type: DataTypes.UUID, primaryKey: true, allowNull: false, field: 'user_id' },
+    name: { type: DataTypes.STRING(150), allowNull: true, field: 'name' },
+    email: { type: DataTypes.STRING(150), allowNull: false, field: 'email' },
+    password_hash: { type: DataTypes.STRING(255), allowNull: false, field: 'password_hash' },
+    role: { type: DataTypes.STRING(20), allowNull: false, field: 'role', defaultValue: 'student' },
+    created_at: { type: DataTypes.DATE, allowNull: false, field: 'created_at' },
   },
-  { ...commonModelOptions, tableName: 'Users', indexes: [{ fields: ['Email'] }, { fields: ['Role'] }] },
+  { tableName: 'Users', timestamps: false, indexes: [{ fields: ['email'] }, { fields: ['role'] }], sync: { alter: false } },
 );
 
 export const Announcement = sequelize.define(
@@ -54,52 +43,36 @@ export const Tuition = sequelize.define(
     Description: { type: DataTypes.TEXT, allowNull: false },
     Contact: { type: DataTypes.STRING(150), allowNull: false },
     PostedBy: { type: DataTypes.STRING(150), allowNull: true },
-    IsActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
   },
   {
-    ...commonModelOptions,
     tableName: 'Tuitions',
-    indexes: [{ fields: ['CreatedAt'] }, { fields: ['Location'] }, { fields: ['IsActive'] }],
+    timestamps: false,
+    indexes: [{ fields: ['Location'] }],
   },
 );
 
 export const AppliedTuition = sequelize.define(
   'AppliedTuition',
   {
-    AppliedTuitionId: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-    Name: { type: DataTypes.STRING(150), allowNull: false },
-    Email: { type: DataTypes.STRING(150), allowNull: false },
-    Contact: { type: DataTypes.STRING(50), allowNull: false },
-    Message: { type: DataTypes.TEXT, allowNull: true },
-    Status: {
-      type: DataTypes.ENUM('Pending', 'Approved', 'Rejected', 'Booked'),
-      allowNull: false,
-      defaultValue: 'Pending',
-    },
+    application_id: { type: DataTypes.UUID, primaryKey: true, allowNull: false, field: 'application_id' },
+    tuition_id: { type: DataTypes.UUID, allowNull: false, field: 'tuition_id' },
+    user_id: { type: DataTypes.UUID, allowNull: false, field: 'user_id' },
+    status: { type: DataTypes.STRING(50), allowNull: false, field: 'status' },
+    applied_at: { type: DataTypes.DATE, allowNull: false, field: 'applied_at' },
   },
-  { ...commonModelOptions, tableName: 'AppliedTuitions', indexes: [{ fields: ['Email'] }, { fields: ['Status'] }] },
+  { ...commonModelOptions, tableName: 'AppliedTuitions', indexes: [{ fields: ['status'] }] },
 );
 
 export const BookedTuition = sequelize.define(
   'BookedTuition',
   {
-    BookedTuitionId: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-    Title: { type: DataTypes.STRING(180), allowNull: false },
-    Subject: { type: DataTypes.STRING(120), allowNull: false },
-    Days: { type: DataTypes.STRING(80), allowNull: false },
-    Salary: { type: DataTypes.STRING(80), allowNull: false },
-    Location: { type: DataTypes.STRING(180), allowNull: false },
-    Description: { type: DataTypes.TEXT, allowNull: false },
-    Contact: { type: DataTypes.STRING(150), allowNull: false },
-    ApplicantName: { type: DataTypes.STRING(150), allowNull: false },
-    ApplicantEmail: { type: DataTypes.STRING(150), allowNull: false },
-    ApplicantContact: { type: DataTypes.STRING(50), allowNull: false },
-    Message: { type: DataTypes.TEXT, allowNull: true },
-    BookedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
-    Status: { type: DataTypes.ENUM('Booked', 'Completed', 'Cancelled'), allowNull: false, defaultValue: 'Booked' },
+    booking_id: { type: DataTypes.UUID, primaryKey: true, allowNull: false, field: 'booking_id' },
+    application_id: { type: DataTypes.UUID, allowNull: false, field: 'application_id' },
+    confirmed_at: { type: DataTypes.DATE, allowNull: true, field: 'confirmed_at' },
   },
-  { ...commonModelOptions, tableName: 'BookedTuitions', indexes: [{ fields: ['ApplicantEmail'] }, { fields: ['BookedAt'] }] },
+  { tableName: 'BookedTuitions', timestamps: false },
 );
+
 
 export const Maid = sequelize.define(
   'Maid',
@@ -110,26 +83,27 @@ export const Maid = sequelize.define(
     Location: { type: DataTypes.STRING(180), allowNull: true },
     Description: { type: DataTypes.TEXT, allowNull: true },
     Contact: { type: DataTypes.STRING(150), allowNull: true },
-    IsActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+    CreatedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
   },
-  { ...commonModelOptions, tableName: 'Maids', indexes: [{ fields: ['IsActive'] }, { fields: ['Location'] }] },
+  { ...commonModelOptions, tableName: 'Maids', indexes: [{ fields: ['Location'] }] },
 );
 
 export const AppliedMaid = sequelize.define(
   'AppliedMaid',
   {
     AppliedMaidId: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    MaidId: { type: DataTypes.UUID, allowNull: false },
     Name: { type: DataTypes.STRING(150), allowNull: false },
-    Email: { type: DataTypes.STRING(150), allowNull: false },
-    Contact: { type: DataTypes.STRING(50), allowNull: false },
+    Contact: { type: DataTypes.STRING(80), allowNull: false },
     Message: { type: DataTypes.TEXT, allowNull: true },
     Status: {
       type: DataTypes.ENUM('Pending', 'Approved', 'Rejected', 'Booked'),
       allowNull: false,
       defaultValue: 'Pending',
     },
+    CreatedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
   },
-  { ...commonModelOptions, tableName: 'AppliedMaids', indexes: [{ fields: ['Email'] }, { fields: ['Status'] }] },
+  { ...commonModelOptions, tableName: 'AppliedMaids', indexes: [{ fields: ['Status'] }] },
 );
 
 export const BookedMaid = sequelize.define(
@@ -141,14 +115,12 @@ export const BookedMaid = sequelize.define(
     Location: { type: DataTypes.STRING(180), allowNull: true },
     Contact: { type: DataTypes.STRING(150), allowNull: true },
     ApplicantName: { type: DataTypes.STRING(150), allowNull: false },
-    ApplicantEmail: { type: DataTypes.STRING(150), allowNull: false },
     ApplicantContact: { type: DataTypes.STRING(50), allowNull: false },
     Message: { type: DataTypes.TEXT, allowNull: true },
     BusyUntil: { type: DataTypes.DATE, allowNull: true },
-    BookedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
     Status: { type: DataTypes.ENUM('Booked', 'Completed', 'Cancelled'), allowNull: false, defaultValue: 'Booked' },
   },
-  { ...commonModelOptions, tableName: 'BookedMaids', indexes: [{ fields: ['ApplicantEmail'] }, { fields: ['BookedAt'] }] },
+  { ...commonModelOptions, tableName: 'BookedMaids' },
 );
 
 export const RoommateListing = sequelize.define(
@@ -161,9 +133,8 @@ export const RoommateListing = sequelize.define(
     Location: { type: DataTypes.STRING(180), allowNull: true },
     RoomsAvailable: { type: DataTypes.STRING(50), allowNull: true },
     Details: { type: DataTypes.TEXT, allowNull: true },
-    IsActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
   },
-  { ...commonModelOptions, tableName: 'RoommateListings', indexes: [{ fields: ['Location'] }, { fields: ['IsActive'] }] },
+  { ...commonModelOptions, tableName: 'RoommateListings', indexes: [{ fields: ['Location'] }] },
 );
 
 export const AppliedRoommate = sequelize.define(
@@ -171,7 +142,6 @@ export const AppliedRoommate = sequelize.define(
   {
     AppliedRoommateId: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
     Name: { type: DataTypes.STRING(150), allowNull: true },
-    Email: { type: DataTypes.STRING(150), allowNull: true },
     Contact: { type: DataTypes.STRING(80), allowNull: true },
     Location: { type: DataTypes.STRING(180), allowNull: true },
     RoomsAvailable: { type: DataTypes.STRING(50), allowNull: true },
@@ -182,7 +152,7 @@ export const AppliedRoommate = sequelize.define(
       defaultValue: 'Pending',
     },
   },
-  { ...commonModelOptions, tableName: 'AppliedRoommates', indexes: [{ fields: ['Email'] }, { fields: ['Status'] }] },
+  { ...commonModelOptions, tableName: 'AppliedRoommates', indexes: [{ fields: ['Status'] }] },
 );
 
 export const AppliedToHost = sequelize.define(
