@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import Announcements from '../components/Announcements'
 import { Link } from 'react-router-dom'
+import { motion } from 'framer-motion'
 import FEATURES from '../data/features'
 import useCarouselAutoplay from '../hooks/useCarouselAutoplay'
 import FeatureCard from '../components/FeatureCard'
@@ -37,10 +38,16 @@ export default function PublicHome() {
 
           <div className="col-lg-6 mt-4 mt-lg-0">
               <div className="row g-3">
-              {FEATURES.map(f=> (
-                <div className="col-6" key={f.key}>
+                {FEATURES.map((f, index)=> (
+                  <motion.div
+                    className="col-6"
+                    key={f.key}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.2, delay: index * 0.03 }}
+                  >
                   <FeatureCard feature={f} />
-                </div>
+                  </motion.div>
               ))}
             </div>
           </div>
@@ -50,7 +57,10 @@ export default function PublicHome() {
       <section className="container py-5 public-home-section">
         <div className="row">
           <div className="col-lg-8">
-            <h3 className="panel-title">How it works</h3>
+            <div className="section-header">
+              <h3 className="panel-title">How it works</h3>
+              <span className="icon-label"><i className="bi-mortarboard-fill" /> Study workflow</span>
+            </div>
             <ol className="muted panel-sub">
               <li>Browse the demo features on this page.</li>
               <li>Sign in to save preferences and access full tools.</li>
@@ -107,7 +117,10 @@ export default function PublicHome() {
           </div>
           <div className="col-lg-4">
             <div className="gradient-card p-3 text-dark quick-facts-card">
-              <h6 className="mb-2">Quick facts</h6>
+              <div className="section-header mb-2">
+                <h6 className="mb-0">Quick facts</h6>
+                <span className="icon-label"><i className="bi-info-circle" /> Snapshot</span>
+              </div>
               <p className="muted small mb-1">Trusted by students and young professionals for organizing daily life.</p>
               <div className="d-flex gap-2 mt-2">
                 <div className="small"><strong>6</strong><div className="muted">tools</div></div>
@@ -115,7 +128,10 @@ export default function PublicHome() {
               </div>
             </div>
             <div className="mt-3">
-              <h5 className="panel-title">Announcements</h5>
+              <div className="section-header">
+                <h5 className="panel-title">Announcements</h5>
+                <span className="icon-label"><i className="bi-megaphone-fill" /> Bulletin</span>
+              </div>
               <div className="announcements-shell">
                 <Announcements items={announcements} />
               </div>
@@ -125,7 +141,10 @@ export default function PublicHome() {
       </section>
 
       <section className="container py-5 public-home-section">
-        <h3>What users say</h3>
+        <div className="section-header">
+          <h3>What users say</h3>
+          <span className="icon-label"><i className="bi-chat-quote-fill" /> Testimonials</span>
+        </div>
         <div className="testimonials-static mt-3 d-flex gap-3">
           <div className="testimonial-card testimonial p-3">"Quick roommate matches — enjoyed the experience." — Ali</div>
           <div className="testimonial-card testimonial p-3">"Tutors were responsive and helpful." — Fahad</div>

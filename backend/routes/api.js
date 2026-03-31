@@ -1,11 +1,44 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { randomUUID } from 'node:crypto';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createRequest, getPool, sql } from '../db/connection.js';
 
 const router = express.Router();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_key';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const LOCAL_USERS_FILE = path.join(__dirname, '..', 'db', 'local-users.json');
+
+function isDbUnavailable(error) {
+  const code = error?.code || error?.originalError?.code;
+  const msg = String(error?.message || '');
+  return (
+    code === 'ETIMEOUT' ||
+    code === 'ESOCKET' ||
+    code === 'ELOGIN' ||
+    msg.includes('Failed to connect') ||
+    msg.includes('ConnectionError')
+  );
+}
+
+async function readLocalUsers() {
+  try {
+    const raw = await fs.readFile(LOCAL_USERS_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeLocalUsers(users) {
+  await fs.writeFile(LOCAL_USERS_FILE, JSON.stringify(users, null, 2), 'utf8');
+}
 
 function normalizeUser(row) {
   if (!row) return null;
@@ -63,39 +96,75 @@ router.get('/health', async (_req, res) => {
 
 router.post('/signup', async (req, res) => {
   try {
-    const { fullName, name, email, password } = req.body;
+    const { fullName, name, email, password, phone, university, year, semester, eduEmail } = req.body;
     const userName = fullName || name;
     if (!userName || !email || !password) {
       return res.status(400).json({ msg: 'name, email and password are required' });
     }
+    try {
+      const pool = await getPool();
+      const exists = await pool
+        .request()
+        .input('email', sql.NVarChar(180), email.toLowerCase())
+        .query('SELECT user_id FROM dbo.USERS WHERE email = @email');
 
-    const pool = await getPool();
-    const exists = await pool
-      .request()
-      .input('email', sql.NVarChar(180), email.toLowerCase())
-      .query('SELECT user_id FROM dbo.USERS WHERE email = @email');
+      if (exists.recordset.length > 0) {
+        return res.status(409).json({ msg: 'Email already exists' });
+      }
 
-    if (exists.recordset.length > 0) {
-      return res.status(409).json({ msg: 'Email already exists' });
+      const hash = await bcrypt.hash(password, 10);
+
+      const result = await pool
+        .request()
+        .input('name', sql.NVarChar(120), userName)
+        .input('email', sql.NVarChar(180), email.toLowerCase())
+        .input('password_hash', sql.NVarChar(255), hash)
+        .query(`
+          INSERT INTO dbo.USERS (name, email, password_hash, role)
+          OUTPUT INSERTED.user_id, INSERTED.name, INSERTED.email, INSERTED.role, INSERTED.created_at
+          VALUES (@name, @email, @password_hash, 'student')
+        `);
+
+      const user = normalizeUser(result.recordset[0]);
+      await logActivity(pool, user.user_id, 'signup', 'USERS', user.user_id);
+      return res.status(201).json({ msg: 'Signup successful', user });
+    } catch (dbErr) {
+      if (!isDbUnavailable(dbErr)) {
+        throw dbErr;
+      }
+
+      const localUsers = await readLocalUsers();
+      const normalizedEmail = email.toLowerCase();
+      const existsLocal = localUsers.find((u) => u.email === normalizedEmail);
+      if (existsLocal) {
+        return res.status(409).json({ msg: 'Email already exists' });
+      }
+
+      const hash = await bcrypt.hash(password, 10);
+      const localUser = {
+        user_id: randomUUID(),
+        name: userName,
+        email: normalizedEmail,
+        password_hash: hash,
+        role: 'student',
+        created_at: new Date().toISOString(),
+        profile: {
+          phone: phone || null,
+          university: university || null,
+          year: year || null,
+          semester: semester || null,
+          eduEmail: eduEmail || null,
+        },
+      };
+
+      localUsers.push(localUser);
+      await writeLocalUsers(localUsers);
+
+      return res.status(201).json({
+        msg: 'Signup successful (offline mode)',
+        user: normalizeUser(localUser),
+      });
     }
-
-    const hash = await bcrypt.hash(password, 10);
-
-    const result = await pool
-      .request()
-      .input('name', sql.NVarChar(120), userName)
-      .input('email', sql.NVarChar(180), email.toLowerCase())
-      .input('password_hash', sql.NVarChar(255), hash)
-      .query(`
-        INSERT INTO dbo.USERS (name, email, password_hash, role)
-        OUTPUT INSERTED.user_id, INSERTED.name, INSERTED.email, INSERTED.role, INSERTED.created_at
-        VALUES (@name, @email, @password_hash, 'student')
-      `);
-
-    const user = normalizeUser(result.recordset[0]);
-    await logActivity(pool, user.user_id, 'signup', 'USERS', user.user_id);
-
-    return res.status(201).json({ msg: 'Signup successful', user });
   } catch (error) {
     return res.status(500).json({ msg: 'Signup failed', error: String(error.message || error) });
   }
@@ -107,31 +176,53 @@ router.post('/login', async (req, res) => {
     if (!email || !password) {
       return res.status(400).json({ msg: 'email and password are required' });
     }
+    try {
+      const pool = await getPool();
+      const userResult = await pool
+        .request()
+        .input('email', sql.NVarChar(180), email.toLowerCase())
+        .query('SELECT user_id, name, email, password_hash, role, created_at FROM dbo.USERS WHERE email = @email');
 
-    const pool = await getPool();
-    const userResult = await pool
-      .request()
-      .input('email', sql.NVarChar(180), email.toLowerCase())
-      .query('SELECT user_id, name, email, password_hash, role, created_at FROM dbo.USERS WHERE email = @email');
+      const userRow = userResult.recordset[0];
+      if (!userRow) {
+        return res.status(401).json({ msg: 'Invalid credentials' });
+      }
 
-    const userRow = userResult.recordset[0];
-    if (!userRow) {
-      return res.status(401).json({ msg: 'Invalid credentials' });
+      const valid = await bcrypt.compare(password, userRow.password_hash);
+      if (!valid) {
+        return res.status(401).json({ msg: 'Invalid credentials' });
+      }
+
+      const token = jwt.sign({ user_id: userRow.user_id, role: userRow.role }, JWT_SECRET, {
+        expiresIn: '7d',
+      });
+
+      const user = normalizeUser(userRow);
+      await logActivity(pool, user.user_id, 'login', 'USERS', user.user_id);
+
+      return res.json({ token, user });
+    } catch (dbErr) {
+      if (!isDbUnavailable(dbErr)) {
+        throw dbErr;
+      }
+
+      const localUsers = await readLocalUsers();
+      const userRow = localUsers.find((u) => u.email === String(email).toLowerCase());
+      if (!userRow) {
+        return res.status(401).json({ msg: 'Invalid credentials' });
+      }
+
+      const valid = await bcrypt.compare(password, userRow.password_hash);
+      if (!valid) {
+        return res.status(401).json({ msg: 'Invalid credentials' });
+      }
+
+      const token = jwt.sign({ user_id: userRow.user_id, role: userRow.role || 'student' }, JWT_SECRET, {
+        expiresIn: '7d',
+      });
+
+      return res.json({ token, user: normalizeUser(userRow), offline: true });
     }
-
-    const valid = await bcrypt.compare(password, userRow.password_hash);
-    if (!valid) {
-      return res.status(401).json({ msg: 'Invalid credentials' });
-    }
-
-    const token = jwt.sign({ user_id: userRow.user_id, role: userRow.role }, JWT_SECRET, {
-      expiresIn: '7d',
-    });
-
-    const user = normalizeUser(userRow);
-    await logActivity(pool, user.user_id, 'login', 'USERS', user.user_id);
-
-    return res.json({ token, user });
   } catch (error) {
     return res.status(500).json({ msg: 'Login failed', error: String(error.message || error) });
   }

@@ -38,17 +38,11 @@ export default function Navbar(){
   }, [location.pathname])
 
   return (
-  <nav ref={navRef} className="navbar navbar-expand-lg sticky-top navbar-custom navbar-dark" style={{
-    background: 'rgba(18,44,74,0.85)',
-    borderBottom: '1px solid rgba(0,0,0,0.06)',
-    boxShadow: '0 2px 16px 0 rgba(10,31,68,0.08)',
-    backdropFilter: 'blur(12px)',
-    WebkitBackdropFilter: 'blur(12px)'
-  }}>
+  <nav ref={navRef} className="navbar navbar-expand-lg sticky-top navbar-custom">
     <div className="container">
-      <Link className="navbar-logo navbar-brand d-flex align-items-center gap-2" to={isAuthed() ? '/home' : '/'} style={{textDecoration:'none'}}>
-        <img src="/logo.png" alt="BacheLORE" width={38} height={38} style={{objectFit:'contain', borderRadius:10, boxShadow:'0 2px 8px rgba(0,184,217,0.10)'}} />
-        <span style={{fontWeight:700, color:'var(--bachelore-cyan)', fontSize:'1.5rem', letterSpacing:'0.04em'}}>BacheLORE</span>
+      <Link className="navbar-logo navbar-brand d-flex align-items-center gap-2" to={isAuthed() ? '/home' : '/'}>
+        <img src="/logo.png" alt="BacheLORE" width={38} height={38} className="brand-logo-img" />
+        <span className="brand-title">BacheLORE</span>
       </Link>
 
       <button

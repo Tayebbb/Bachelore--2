@@ -9,7 +9,7 @@ const instance = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
-  timeout: 5000,
+  timeout: Number(import.meta.env.VITE_API_TIMEOUT_MS || 12000),
 });
 instance.interceptors.request.use(
   (req) => {

@@ -1,0 +1,32 @@
+[
+  {
+    "user_id": "3c1a8e98-513f-47ba-aab6-060ced2063d5",
+    "name": "Enid Offline",
+    "email": "enid.offline.demo@example.com",
+    "password_hash": "$2a$10$k7gxDcDRmctw8wJuF4Bhn.kFjxDhduvLmD4sJ8hQIyXo5sdGNYNYS",
+    "role": "student",
+    "created_at": "2026-03-30T20:48:09.136Z",
+    "profile": {
+      "phone": "01777877617",
+      "university": "AUST",
+      "year": "1st",
+      "semester": "Spring",
+      "eduEmail": "enid.cse.123@aust.edu"
+    }
+  },
+  {
+    "user_id": "95f6752c-52b2-4594-a50f-53ae88a64db7",
+    "name": "EnidTestt",
+    "email": "enid.hasan.21@gmail.com",
+    "password_hash": "$2a$10$TIruS.H3ScRku.15g4ayhOGscNxBaMzyfX1D1fIMYhSrkFqtqQNH.",
+    "role": "student",
+    "created_at": "2026-03-30T20:49:18.646Z",
+    "profile": {
+      "phone": "01777877617",
+      "university": "Ahsanullah University of Science and Technology",
+      "year": "1st",
+      "semester": "Spring",
+      "eduEmail": "enid.cse.123@aust.edu"
+    }
+  }
+]

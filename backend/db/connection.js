@@ -9,6 +9,8 @@ const dbConfig = {
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   port: process.env.DB_PORT ? Number(process.env.DB_PORT) : 1433,
+  connectionTimeout: Number(process.env.DB_CONNECTION_TIMEOUT_MS || 4000),
+  requestTimeout: Number(process.env.DB_REQUEST_TIMEOUT_MS || 12000),
   options: {
     trustServerCertificate: true,
     encrypt: false,
@@ -27,7 +29,11 @@ let poolPromise = null;
 
 export async function getPool() {
   if (!poolPromise) {
-    poolPromise = sql.connect(dbConfig);
+    poolPromise = sql.connect(dbConfig).catch((err) => {
+      // Allow the next request to retry instead of reusing a rejected promise forever.
+      poolPromise = null;
+      throw err;
+    });
   }
   return poolPromise;
 }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import Announcements from '../components/Announcements'
 import { Link } from 'react-router-dom'
+import { motion } from 'framer-motion'
 
 
 import FEATURES from '../data/features'
@@ -71,11 +72,21 @@ export default function Home() {
       </header>
 
       <section id="features" className="container py-5">
+        <div className="section-header">
+          <h3 className="panel-title">Academic Services</h3>
+          <span className="icon-label"><i className="bi-grid-3x3-gap-fill" /> Organized modules</span>
+        </div>
         <div className="row g-4">
-          {FEATURES.map(f=> (
-            <div className="col-6 col-md-4" key={f.key}>
+          {FEATURES.map((f, index)=> (
+            <motion.div
+              className="col-6 col-md-4"
+              key={f.key}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2, delay: index * 0.03 }}
+            >
               <FeatureCard feature={f} />
-            </div>
+            </motion.div>
           ))}
         </div>
       </section>
@@ -83,14 +94,20 @@ export default function Home() {
       <section className="container py-5">
         <div className="row">
           <div className="col-lg-8">
-            <h3 className="panel-title">Recent activity</h3>
+            <div className="section-header">
+              <h3 className="panel-title">Recent Activity</h3>
+              <span className="icon-label"><i className="bi-journal-text" /> Study feed</span>
+            </div>
             <p className="muted panel-sub">Your latest trips through the app — quick access to recent searches, bookings, and listings.</p>
             <div className="mt-3 activity-panel">
               <ActivityFeed />
             </div>
           </div>
           <div className="col-lg-4 mt-4 mt-lg-0">
-            <h5 className="panel-title">Announcements</h5>
+            <div className="section-header">
+              <h5 className="panel-title">Announcements</h5>
+              <span className="icon-label"><i className="bi-megaphone-fill" /> Campus notices</span>
+            </div>
             <Announcements items={announcements} />
           </div>
         </div>
