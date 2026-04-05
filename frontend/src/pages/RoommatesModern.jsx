@@ -1,38 +1,67 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import AppShell from '../components/AppShell.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
-
-const data = [
-  { id: 'r1', title: 'Host: 2 Seats Available', location: 'Farmgate', price: '5500 BDT', status: 'Pending', contact: '017XXXXXXXX' },
-  { id: 'r2', title: 'Seeker: CSE Student', location: 'Shyamoli', price: '5000 BDT', status: 'Approved', contact: '018XXXXXXXX' },
-  { id: 'r3', title: 'Host: Shared Flat', location: 'Mirpur', price: '6000 BDT', status: 'Booked', contact: '019XXXXXXXX' },
-];
+import api from '../components/axios.jsx';
+import { getUser } from '../lib/auth';
 
 export default function RoommatesModern() {
+  const [rows, setRows] = useState([]);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
-  const [sort, setSort] = useState('latest');
+  const [sort, setSort] = useState('all');
   const [showModal, setShowModal] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [form, setForm] = useState({ location: '', rent: '', roomsAvailable: '', details: '', contact: '' });
+
+  const loadRows = async () => {
+    try {
+      setLoading(true);
+      const { data } = await api.get('/api/roommates/listings');
+      setRows(Array.isArray(data) ? data : []);
+      setError('');
+    } catch {
+      setRows([]);
+      setError('Failed to load roommate listings.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadRows();
+  }, []);
 
   const items = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return data.filter((item) => {
-      const matchesQ = !q || `${item.title} ${item.location} ${item.contact}`.toLowerCase().includes(q);
-      const matchesFilter = filter === 'all' || item.status.toLowerCase().includes(filter);
-      return matchesQ && matchesFilter;
+    return rows.filter((item) => {
+      const text = `${item.name || ''} ${item.location || ''} ${item.details || ''} ${item.contact || ''}`.toLowerCase();
+      const matchesQ = !q || text.includes(q);
+      const matchesFilter = filter === 'all' || (item.name || '').toLowerCase().includes(filter);
+      const matchesArea = sort === 'all' || (item.location || '').toLowerCase().includes(sort);
+      return matchesQ && matchesFilter && matchesArea;
     });
-  }, [search, filter]);
+  }, [rows, search, filter, sort]);
 
-  const getTags = (row) => {
-    if (row.id === 'r1') return ['Night Owl', 'Quiet', 'Non-smoker'];
-    if (row.id === 'r2') return ['Early Riser', 'Clean', 'Student'];
-    return ['Friendly', 'Organized', 'Budget-focused'];
-  };
-
-  const getGender = (row) => {
-    if (row.id === 'r1') return 'Male';
-    if (row.id === 'r2') return 'Female';
-    return 'Any';
+  const submitListing = async () => {
+    const user = getUser();
+    const userId = user?.id || user?._id;
+    try {
+      await api.post(`/api/roommates/${userId}/apply`, {
+        location: form.location,
+        rent: Number(form.rent || 0),
+        roomsAvailable: form.roomsAvailable,
+        details: form.details,
+        name: user?.name || user?.fullName || '',
+        email: user?.email || '',
+        contact: form.contact,
+      });
+      setForm({ location: '', rent: '', roomsAvailable: '', details: '', contact: '' });
+      setShowModal(false);
+      await loadRows();
+    } catch {
+      setError('Failed to create roommate listing.');
+    }
   };
 
   return (
@@ -52,7 +81,7 @@ export default function RoommatesModern() {
             <option value="any">Any</option>
           </select>
           <select className="app-select" value={sort} onChange={(e) => setSort(e.target.value)}>
-            <option value="latest">All Areas</option>
+            <option value="all">All Areas</option>
             <option value="farmgate">Farmgate</option>
             <option value="shyamoli">Shyamoli</option>
             <option value="mirpur">Mirpur</option>
@@ -61,9 +90,12 @@ export default function RoommatesModern() {
         </div>
       </section>
 
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '64px 24px', color: 'var(--fg-muted)' }}>Loading roommate listings...</div>
+      ) : (
       <section className="bento-grid" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
         {items.map((item) => (
-          <article key={item.id} className="surface-card reveal-on-scroll">
+          <article key={item._id || item.listing_id} className="surface-card reveal-on-scroll">
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
               <div
                 style={{
@@ -77,18 +109,18 @@ export default function RoommatesModern() {
                   fontWeight: 700,
                 }}
               >
-                {item.title.slice(0, 2).toUpperCase()}
+                {(item.name || 'RM').slice(0, 2).toUpperCase()}
               </div>
               <div>
-                <h4 style={{ marginBottom: 2 }}>{item.title}</h4>
+                <h4 style={{ marginBottom: 2 }}>{item.name || 'Host Listing'}</h4>
                 <div className="text-label">University: BacheLORE Campus</div>
               </div>
             </div>
 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-              {getTags(item).map((tag) => (
+              {(item.details || '').split(',').map((tag) => tag.trim()).filter(Boolean).slice(0, 3).map((tag) => (
                 <span
-                  key={tag}
+                  key={`${item._id || item.listing_id}-${tag}`}
                   style={{
                     padding: '4px 10px',
                     borderRadius: 999,
@@ -105,11 +137,11 @@ export default function RoommatesModern() {
             </div>
 
             <div style={{ marginBottom: 10 }}>
-              <div style={{ color: 'var(--accent)', fontWeight: 700 }}>{item.price}</div>
-              <div style={{ color: 'var(--fg-muted)' }}>{item.location} - {getGender(item)}</div>
+              <div style={{ color: 'var(--accent)', fontWeight: 700 }}>{Number(item.rent || 0).toLocaleString()} BDT</div>
+              <div style={{ color: 'var(--fg-muted)' }}>{item.location} - {item.roomsAvailable || 'N/A'} seats</div>
             </div>
 
-            <StatusBadge status={item.status} />
+            <StatusBadge status="available" />
             <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
               <button className="btn-primary" type="button">Connect</button>
               <button className="btn-ghost" type="button">View</button>
@@ -117,6 +149,8 @@ export default function RoommatesModern() {
           </article>
         ))}
       </section>
+      )}
+      {error && <div style={{ color: 'var(--danger)', marginTop: 8 }}>{error}</div>}
 
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
@@ -125,19 +159,27 @@ export default function RoommatesModern() {
               <h5 className="modal-title">Add Roommate Listing</h5>
             </div>
             <div className="form-group">
-              <label className="form-label">Listing Title</label>
-              <input className="app-input" placeholder="Host or seeker title" />
-            </div>
-            <div className="form-group">
               <label className="form-label">Area</label>
-              <input className="app-input" placeholder="Preferred area" />
+              <input className="app-input" placeholder="Preferred area" value={form.location} onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))} />
             </div>
             <div className="form-group">
               <label className="form-label">Budget</label>
-              <input className="app-input" type="number" placeholder="Monthly budget" />
+              <input className="app-input" type="number" placeholder="Monthly budget" value={form.rent} onChange={(e) => setForm((f) => ({ ...f, rent: e.target.value }))} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Seats Available</label>
+              <input className="app-input" placeholder="e.g., 2" value={form.roomsAvailable} onChange={(e) => setForm((f) => ({ ...f, roomsAvailable: e.target.value }))} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Contact</label>
+              <input className="app-input" placeholder="Phone or email" value={form.contact} onChange={(e) => setForm((f) => ({ ...f, contact: e.target.value }))} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Details</label>
+              <textarea className="app-input" rows={4} placeholder="Comma separated preferences" value={form.details} onChange={(e) => setForm((f) => ({ ...f, details: e.target.value }))} />
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-              <button className="btn-primary" type="button" onClick={() => setShowModal(false)}>Save Listing</button>
+              <button className="btn-primary" type="button" onClick={submitListing}>Save Listing</button>
               <button className="btn-ghost" type="button" onClick={() => setShowModal(false)}>Cancel</button>
             </div>
           </div>

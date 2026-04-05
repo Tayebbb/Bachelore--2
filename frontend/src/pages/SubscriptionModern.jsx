@@ -1,76 +1,78 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import AppShell from '../components/AppShell.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
-
-const payments = [
-  { id: 'pay1', amount: 499, method: 'bKash', date: '2026-03-25', status: 'completed' },
-  { id: 'pay2', amount: 499, method: 'Nagad', date: '2026-02-25', status: 'completed' },
-  { id: 'pay3', amount: 499, method: 'Card', date: '2026-01-25', status: 'failed' },
-];
-
-const plans = [
-  {
-    id: 'free',
-    name: 'Free',
-    price: '0',
-    period: 'forever',
-    description: 'Basic access to browse listings and view content.',
-    features: [
-      'Browse all listings',
-      'View contact details',
-      'Basic search filters',
-    ],
-    cta: 'Current Plan',
-    featured: false,
-  },
-  {
-    id: 'monthly',
-    name: 'Monthly',
-    price: '499',
-    period: 'month',
-    description: 'Full access with priority placement and verified badge.',
-    features: [
-      'Everything in Free',
-      'Priority listing placement',
-      'Verified badge',
-      'Faster approvals',
-      'Premium support',
-    ],
-    cta: 'Upgrade Now',
-    featured: true,
-  },
-  {
-    id: 'yearly',
-    name: 'Yearly',
-    price: '4,990',
-    period: 'year',
-    description: 'Best value with 2 months free and all premium features.',
-    features: [
-      'Everything in Monthly',
-      '2 months free',
-      'Bulk listing discount',
-      'API access',
-      'Dedicated account manager',
-    ],
-    cta: 'Upgrade Now',
-    featured: false,
-  },
-];
+import api from '../components/axios.jsx';
+import { getUser } from '../lib/auth';
 
 export default function SubscriptionModern() {
   void motion;
-  const [selectedPlan, setSelectedPlan] = useState('monthly');
+  const [payments, setPayments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [amount, setAmount] = useState('99');
+
+  const user = getUser();
+  const userId = user?.id || user?._id;
+
+  const loadPayments = useCallback(async () => {
+    if (!userId) {
+      setPayments([]);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const { data } = await api.get(`/api/subscription/payments/${userId}`);
+      setPayments(Array.isArray(data) ? data : []);
+      setError('');
+    } catch {
+      setPayments([]);
+      setError('Failed to load payment history.');
+    } finally {
+      setLoading(false);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    loadPayments();
+  }, [loadPayments]);
+
+  const summary = useMemo(() => {
+    const paid = payments.filter((p) => String(p.status || '').toLowerCase() === 'paid');
+    const totalPaid = paid.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    const lastPayment = payments[0]?.payment_date || payments[0]?.created_at || null;
+    return {
+      totalPayments: payments.length,
+      totalPaid,
+      lastPayment,
+      latestStatus: payments[0]?.status || 'none',
+    };
+  }, [payments]);
+
+  const createPayment = async () => {
+    if (!userId) {
+      setError('Please log in first.');
+      return;
+    }
+    try {
+      await api.post('/api/subscription', { userId, amount: Number(amount || 0), status: 'paid' });
+      await loadPayments();
+    } catch {
+      setError('Failed to create payment.');
+    }
+  };
 
   return (
     <AppShell>
       {/* Stats Row */}
       <section className="bento-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
         {[
-          { label: 'Next Payment', value: 'Apr 25, 2026', sub: 'Monthly plan' },
-          { label: 'Amount Due', value: '499 BDT', sub: 'Auto-renewal enabled' },
-          { label: 'Total Paid', value: '1,497 BDT', sub: 'Since joining' },
-          { label: 'Days Left', value: '18', sub: 'In current period' },
+          { label: 'Last Payment', value: summary.lastPayment ? new Date(summary.lastPayment).toLocaleDateString() : '-', sub: 'From database' },
+          { label: 'Latest Status', value: String(summary.latestStatus).toUpperCase(), sub: 'Most recent transaction' },
+          { label: 'Total Paid', value: `${summary.totalPaid.toLocaleString()} BDT`, sub: 'From paid transactions' },
+          { label: 'Transactions', value: summary.totalPayments.toLocaleString(), sub: 'All records' },
         ].map((stat, index) => (
           <motion.div
             key={stat.label}
@@ -96,49 +98,19 @@ export default function SubscriptionModern() {
         ))}
       </section>
 
-      {/* Pricing Cards */}
-      <section>
-        <div className="section-header" style={{ marginBottom: 32, textAlign: 'center' }}>
-          <span className="section-label">Pricing</span>
-          <h2 style={{ marginTop: 8 }}>Choose your plan</h2>
-          <p style={{ color: 'var(--fg-muted)', marginTop: 8 }}>
-            Unlock premium features and priority access
-          </p>
+      <section className="surface-card">
+        <div className="section-header" style={{ marginBottom: 20 }}>
+          <div>
+            <span className="section-label">Create Payment</span>
+            <h3 style={{ marginTop: 8 }}>Add Subscription Payment</h3>
+          </div>
         </div>
 
-        <div className="pricing-grid">
-          {plans.map((plan, index) => (
-            <motion.div
-              key={plan.id}
-              className={`pricing-card ${plan.featured ? 'featured' : ''}`}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 + index * 0.1 }}
-            >
-              <div className="pricing-tier">{plan.name}</div>
-              <div className="pricing-price">
-                ৳{plan.price}
-                <span>/{plan.period}</span>
-              </div>
-              <p style={{ color: 'var(--fg-muted)', fontSize: '0.9375rem', marginBottom: 24 }}>
-                {plan.description}
-              </p>
-
-              <ul className="pricing-features">
-                {plan.features.map((feature) => (
-                  <li key={feature}>{feature}</li>
-                ))}
-              </ul>
-
-              <button
-                className={plan.featured ? 'btn-primary w-full' : 'btn-ghost w-full'}
-                onClick={() => setSelectedPlan(plan.id)}
-              >
-                {plan.id === selectedPlan ? 'Current Plan' : plan.cta}
-              </button>
-            </motion.div>
-          ))}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12 }}>
+          <input className="app-input" type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount (BDT)" />
+          <button className="btn-primary" type="button" onClick={createPayment}>Pay</button>
         </div>
+        {error && <div style={{ color: 'var(--danger)', marginTop: 10 }}>{error}</div>}
       </section>
 
       {/* Payment History */}
@@ -166,13 +138,15 @@ export default function SubscriptionModern() {
               </tr>
             </thead>
             <tbody>
-              {payments.map((payment) => (
-                <tr key={payment.id}>
-                  <td>{payment.date}</td>
-                  <td>{payment.method}</td>
+              {loading ? (
+                <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--fg-muted)' }}>Loading payments...</td></tr>
+              ) : payments.map((payment) => (
+                <tr key={payment._id || payment.payment_id}>
+                  <td>{new Date(payment.payment_date || payment.created_at).toLocaleDateString()}</td>
+                  <td>{payment.method || '-'}</td>
                   <td style={{ fontWeight: 600 }}>{payment.amount} BDT</td>
                   <td>
-                    <StatusBadge status={payment.status} />
+                    <StatusBadge status={payment.status || 'pending'} />
                   </td>
                   <td>
                     <button className="btn-ghost" style={{ padding: '6px 12px', fontSize: '0.875rem' }}>
@@ -181,6 +155,9 @@ export default function SubscriptionModern() {
                   </td>
                 </tr>
               ))}
+              {!loading && payments.length === 0 && (
+                <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--fg-muted)' }}>No payment history found.</td></tr>
+              )}
             </tbody>
           </table>
         </div>

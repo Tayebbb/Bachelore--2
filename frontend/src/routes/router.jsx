@@ -28,7 +28,7 @@ import UserActivities from '../pages/UserActivities.jsx'
 import Profile from '../pages/Profile.jsx'
 import NotFound from '../pages/NotFound.jsx'
 
-import { isAuthed, onAuthChange, offAuthChange } from '../lib/auth'
+import { isAuthed, isAdminAuthed, onAuthChange, offAuthChange } from '../lib/auth'
 import { useLocation } from 'react-router-dom'
 
 export default function Router(){
@@ -55,6 +55,16 @@ export default function Router(){
       return () => offAuthChange(cb)
     }, [])
     return authed ? children : <Navigate to="/login" replace />
+  }
+
+  const AdminRoute = ({ children }) => {
+    const [adminAuthed, setAdminAuthed] = useState(() => isAdminAuthed())
+    useEffect(() => {
+      const cb = () => setAdminAuthed(isAdminAuthed())
+      onAuthChange(cb)
+      return () => offAuthChange(cb)
+    }, [])
+    return adminAuthed ? children : <Navigate to="/admin-login" replace />
   }
   const location = useLocation();
   const hideGlobalChrome = location.pathname === '/'
@@ -86,7 +96,7 @@ export default function Router(){
           <Route path="/booked-roommates" element={<PrivateRoute><BookedRoommates/></PrivateRoute>} />
           <Route path="/announcements-all" element={<AnnouncementsAll/>} />
           <Route path="/admin-login" element={<AdminLogin/>} />
-          <Route path="/admin-dashboard" element={<AdminDashboard/>} />
+          <Route path="/admin-dashboard" element={<AdminRoute><AdminDashboard/></AdminRoute>} />
           <Route path="*" element={<NotFound/>} />
         </Routes>
       </div>

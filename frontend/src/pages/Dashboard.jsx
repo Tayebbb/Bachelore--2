@@ -1,15 +1,9 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import AppShell from '../components/AppShell.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
-
-const kpis = [
-  { id: 'applications', label: 'Total Applications', value: '1,284', delta: '+18%', trend: 'up' },
-  { id: 'bookings', label: 'Active Bookings', value: '326', delta: '+9%', trend: 'up' },
-  { id: 'payments', label: 'Completed Payments', value: '892', delta: '+26%', trend: 'up' },
-  { id: 'response', label: 'Avg Response Time', value: '62ms', delta: '-12%', trend: 'down' },
-];
+import api from '../components/axios.jsx';
 
 const modules = [
   { key: 'tuition', title: 'Tuition', icon: 'bi-journal-text', desc: 'Find tutors and track sessions', path: '/tuition', available: true },
@@ -20,22 +14,85 @@ const modules = [
   { key: 'subscription', title: 'Subscription', icon: 'bi-credit-card', desc: 'Manage payments', path: '/subscription', available: true },
 ];
 
-const activities = [
-  { id: 1, icon: 'bi-check-circle', text: 'Tuition booking approved for CSE tutor', time: '2 min ago', type: 'success' },
-  { id: 2, icon: 'bi-house', text: 'House listing verified by admin', time: '15 min ago', type: 'info' },
-  { id: 3, icon: 'bi-cart-check', text: 'Marketplace item marked sold', time: '1 hour ago', type: 'success' },
-  { id: 4, icon: 'bi-person-check', text: 'Roommate profile activated', time: '3 hours ago', type: 'info' },
-  { id: 5, icon: 'bi-arrow-repeat', text: 'Subscription renewed for 30 days', time: '5 hours ago', type: 'success' },
-];
-
-const announcements = [
-  { id: 1, title: 'New Maid Services Available', category: 'Service', date: 'Today' },
-  { id: 2, title: 'Platform Maintenance Scheduled', category: 'System', date: 'Yesterday' },
-  { id: 3, title: 'Tuition Rates Updated', category: 'Pricing', date: '2 days ago' },
-];
+function formatRelativeTime(input) {
+  if (!input) return 'Unknown time';
+  const ts = new Date(input).getTime();
+  if (Number.isNaN(ts)) return 'Unknown time';
+  const diffSec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (diffSec < 60) return `${diffSec}s ago`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  return `${diffDay}d ago`;
+}
 
 export default function Dashboard() {
   void motion;
+  const [overview, setOverview] = useState(null);
+  const [activity, setActivity] = useState([]);
+  const [announcements, setAnnouncements] = useState([]);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [statsRes, activityRes, announcementsRes] = await Promise.all([
+          api.get('/api/dashboard/stats'),
+          api.get('/api/activity'),
+          api.get('/api/announcements'),
+        ]);
+
+        setOverview(statsRes.data?.overview || null);
+        setActivity(Array.isArray(activityRes.data) ? activityRes.data.slice(0, 5) : []);
+        setAnnouncements(Array.isArray(announcementsRes.data) ? announcementsRes.data.slice(0, 5) : []);
+      } catch {
+        setOverview(null);
+        setActivity([]);
+        setAnnouncements([]);
+      }
+    };
+
+    load();
+  }, []);
+
+  const kpis = useMemo(() => {
+    const totalBookings = overview?.totalBookings ?? 0;
+    const pendingApplications = overview?.pendingApplications ?? 0;
+    const totalPayments = overview?.totalPayments ?? 0;
+    const activeMarketplaceItems = overview?.activeMarketplaceItems ?? 0;
+
+    return [
+      { id: 'bookings', label: 'Total Bookings', value: Number(totalBookings).toLocaleString(), trend: 'up' },
+      { id: 'applications', label: 'Pending Applications', value: Number(pendingApplications).toLocaleString(), trend: 'down' },
+      { id: 'payments', label: 'Total Payments', value: Number(totalPayments).toLocaleString(), trend: 'up' },
+      { id: 'marketplace', label: 'Active Marketplace', value: Number(activeMarketplaceItems).toLocaleString(), trend: 'up' },
+    ];
+  }, [overview]);
+
+  const activityRows = useMemo(() => {
+    const iconMap = {
+      book_tuition: 'bi-journal-check',
+      unbook_tuition: 'bi-arrow-counterclockwise',
+      book_maid: 'bi-house-check',
+      unbook_maid: 'bi-house-x',
+      book_roommate: 'bi-people-fill',
+      unbook_roommate: 'bi-people',
+      create_marketplace_item: 'bi-bag-plus',
+      sell_marketplace_item: 'bi-bag-check',
+      create_house_listing: 'bi-building-add',
+      create_tuition: 'bi-journal-plus',
+      create_announcement: 'bi-megaphone',
+    };
+
+    return activity.map((item) => ({
+      id: item._id || item.activity_id,
+      icon: iconMap[item.action_type] || 'bi-clock-history',
+      text: item.action_type?.replaceAll('_', ' ') || 'activity',
+      time: formatRelativeTime(item.timestamp),
+      type: item.action_type?.includes('unbook') ? 'info' : 'success',
+    }));
+  }, [activity]);
 
   return (
     <AppShell>
@@ -61,14 +118,8 @@ export default function Dashboard() {
             >
               {kpi.value}
             </div>
-            <div
-              style={{
-                fontSize: '0.875rem',
-                color: kpi.trend === 'up' ? 'var(--success)' : 'var(--danger)',
-                fontWeight: 500,
-              }}
-            >
-              {kpi.delta} this week
+            <div style={{ fontSize: '0.875rem', color: kpi.trend === 'up' ? 'var(--success)' : 'var(--danger)', fontWeight: 500 }}>
+              Live from database
             </div>
           </motion.div>
         ))}
@@ -142,15 +193,15 @@ export default function Dashboard() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {activities.map((activity) => (
+            {activityRows.map((activityItem) => (
               <div
-                key={activity.id}
+                key={activityItem.id}
                 style={{
                   display: 'flex',
                   alignItems: 'flex-start',
                   gap: 16,
                   paddingLeft: 16,
-                  borderLeft: `2px solid ${activity.type === 'success' ? 'var(--success)' : 'var(--accent)'}`,
+                  borderLeft: `2px solid ${activityItem.type === 'success' ? 'var(--success)' : 'var(--accent)'}`,
                 }}
               >
                 <div
@@ -161,20 +212,21 @@ export default function Dashboard() {
                     background: 'var(--bg-elevated)',
                     display: 'grid',
                     placeItems: 'center',
-                    color: activity.type === 'success' ? 'var(--success)' : 'var(--accent)',
+                    color: activityItem.type === 'success' ? 'var(--success)' : 'var(--accent)',
                     flexShrink: 0,
                   }}
                 >
-                  <i className={`bi ${activity.icon}`} />
+                  <i className={`bi ${activityItem.icon}`} />
                 </div>
                 <div style={{ flex: 1 }}>
                   <p style={{ margin: 0, color: 'var(--fg-primary)', fontSize: '0.9375rem' }}>
-                    {activity.text}
+                    {activityItem.text}
                   </p>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--fg-muted)' }}>{activity.time}</span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--fg-muted)' }}>{activityItem.time}</span>
                 </div>
               </div>
             ))}
+            {activityRows.length === 0 && <p style={{ color: 'var(--fg-muted)', margin: 0 }}>No activity found.</p>}
           </div>
         </div>
 
@@ -190,7 +242,7 @@ export default function Dashboard() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {announcements.map((announcement) => (
               <div
-                key={announcement.id}
+                key={announcement._id || announcement.announcement_id}
                 style={{
                   padding: 16,
                   borderRadius: 'var(--radius-md)',
@@ -199,12 +251,13 @@ export default function Dashboard() {
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <StatusBadge status={announcement.category} />
-                  <span style={{ fontSize: '0.75rem', color: 'var(--fg-muted)' }}>{announcement.date}</span>
+                  <StatusBadge status="active" />
+                  <span style={{ fontSize: '0.75rem', color: 'var(--fg-muted)' }}>{formatRelativeTime(announcement.created_at)}</span>
                 </div>
-                <p style={{ margin: 0, fontSize: '0.9375rem', fontWeight: 500 }}>{announcement.title}</p>
+                <p style={{ margin: 0, fontSize: '0.9375rem', fontWeight: 500 }}>{announcement.title || 'Untitled'}</p>
               </div>
             ))}
+            {announcements.length === 0 && <p style={{ color: 'var(--fg-muted)', margin: 0 }}>No announcements found.</p>}
           </div>
 
           <Link

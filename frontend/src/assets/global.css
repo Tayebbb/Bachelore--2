@@ -91,6 +91,20 @@
 * {
   margin: 0;
   padding: 0;
+  box-sizing: border-box;
+}
+
+button {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 html {
@@ -647,13 +661,7 @@ p {
   border-color: var(--fg-muted);
 }
 
-.btn-gradient {
-  /* No-op - part of btn-primary hierarchy */
-}
 
-.btn-soft {
-  /* No-op - part of btn-ghost hierarchy */
-}
 
 /* ============================================================================
    CARDS & SURFACES - Bento grid style
@@ -1122,6 +1130,11 @@ p {
 
 .accordion-item {
   border-bottom: 1px solid var(--border);
+  transition: background-color 0.2s ease;
+}
+
+.accordion-item:hover {
+  background: var(--bg-elevated);
 }
 
 .accordion-header {
@@ -1129,15 +1142,12 @@ p {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 24px 0;
-  background: transparent;
-  border: none;
+  padding: 24px;
   color: var(--fg-primary);
   font-family: var(--font-body);
   font-size: 1.0625rem;
   font-weight: 600;
   text-align: left;
-  cursor: pointer;
   transition: color 0.2s;
 }
 
@@ -1146,27 +1156,33 @@ p {
 }
 
 .accordion-icon {
-  transition: transform 0.3s ease;
+  font-size: 1.25rem;
+  color: var(--fg-muted);
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .accordion-item.open .accordion-icon {
   transform: rotate(180deg);
+  color: var(--accent);
 }
 
 .accordion-content {
   max-height: 0;
   overflow: hidden;
-  transition: max-height 0.3s ease, padding 0.3s ease;
+  transition: max-height 0.4s cubic-bezier(0.22, 1, 0.36, 1), 
+              padding 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  padding: 0 24px;
 }
 
 .accordion-item.open .accordion-content {
   max-height: 500px;
-  padding-bottom: 24px;
+  padding-bottom: 32px;
 }
 
 .accordion-content p {
   color: var(--fg-muted);
-  line-height: 1.7;
+  line-height: 1.8;
+  font-size: 0.95rem;
 }
 
 /* ============================================================================

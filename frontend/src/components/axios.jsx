@@ -1,9 +1,10 @@
 import axios from "axios";
+import { getToken } from '../lib/auth'
 
 const BASE =
   import.meta.env.VITE_API_BASE_URL ||
   import.meta.env.VITE_API_URL ||
-  "http://localhost:5000";
+  "";
 const instance = axios.create({
   baseURL: BASE,
   headers: {
@@ -14,6 +15,11 @@ const instance = axios.create({
 instance.interceptors.request.use(
   (req) => {
     try {
+      const token = getToken();
+      if (token) {
+        req.headers = req.headers || {};
+        req.headers.Authorization = `Bearer ${token}`;
+      }
       console.debug(
         "[axios] Request:",
         req.method,

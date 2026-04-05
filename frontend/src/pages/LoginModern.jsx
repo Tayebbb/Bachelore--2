@@ -35,7 +35,7 @@ export default function LoginModern() {
     try {
       const { data } = await axios.post('/api/login', { email, password });
       if (data && data.user) {
-        authLogin(data.user);
+        authLogin(data.user, data.token);
         setStatus('success');
         const params = new URLSearchParams(location.search);
         const next = params.get('next');

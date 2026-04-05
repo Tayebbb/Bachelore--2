@@ -1,18 +1,33 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import axios from '../components/axios';
+import { adminLogin, isAdminAuthed } from '../lib/auth';
 
 export default function AdminLoginModern() {
   const navigate = useNavigate();
   const [adminCode, setAdminCode] = useState('');
   const [error, setError] = useState('');
 
-  const handleSubmit = (e) => {
+  useEffect(() => {
+    if (isAdminAuthed()) {
+      navigate('/admin-dashboard', { replace: true });
+    }
+  }, [navigate]);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (adminCode.length < 4) {
       setError('Please enter a valid admin code');
       return;
     }
-    navigate('/admin-dashboard');
+
+    try {
+      const { data } = await axios.post('/api/admin/login', { adminCode });
+      adminLogin({ name: 'Admin', role: 'admin' }, data?.token);
+      navigate('/admin-dashboard', { replace: true });
+    } catch (err) {
+      setError(err?.response?.data?.msg || 'Invalid admin code');
+    }
   };
 
   return (

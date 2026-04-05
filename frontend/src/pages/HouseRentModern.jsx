@@ -1,32 +1,68 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import AppShell from '../components/AppShell.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
-
-const data = [
-  { id: 'h1', title: '2 Bed Flat Near Campus', location: 'Mohammadpur', price: '15000 BDT', status: 'Approved', contact: '017XXXXXXXX' },
-  { id: 'h2', title: 'Studio for Single Student', location: 'Uttara', price: '9500 BDT', status: 'Pending', contact: '018XXXXXXXX' },
-  { id: 'h3', title: 'Shared Flat (3 Students)', location: 'Dhanmondi', price: '18000 BDT', status: 'Booked', contact: '019XXXXXXXX' },
-];
+import api from '../components/axios.jsx';
+import { getUser } from '../lib/auth';
 
 export default function HouseRentModern() {
+  const [rows, setRows] = useState([]);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
   const [sort, setSort] = useState('latest');
   const [showModal, setShowModal] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [form, setForm] = useState({ location: '', rent: '', rooms: '', description: '' });
+
+  const loadRows = async () => {
+    try {
+      setLoading(true);
+      const { data } = await api.get('/api/house-rent');
+      setRows(Array.isArray(data) ? data : []);
+      setError('');
+    } catch {
+      setRows([]);
+      setError('Failed to load house rent listings.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadRows();
+  }, []);
 
   const items = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return data.filter((item) => {
-      const matchesQ = !q || `${item.title} ${item.location} ${item.contact}`.toLowerCase().includes(q);
-      const matchesFilter = filter === 'all' || item.status.toLowerCase().includes(filter);
+    let filtered = rows.filter((item) => {
+      const title = item.title || item.location || '';
+      const location = item.location || '';
+      const matchesQ = !q || `${title} ${location}`.toLowerCase().includes(q);
+      const matchesFilter = filter === 'all' || location.toLowerCase().includes(filter);
       return matchesQ && matchesFilter;
     });
-  }, [search, filter]);
 
-  const getStats = (row) => {
-    if (row.id === 'h1') return { area: 1050, beds: 2, baths: 2 };
-    if (row.id === 'h2') return { area: 540, beds: 1, baths: 1 };
-    return { area: 1300, beds: 3, baths: 2 };
+    if (sort === 'priceAsc') filtered = [...filtered].sort((a, b) => Number(a.rent || a.price || 0) - Number(b.rent || b.price || 0));
+    if (sort === 'priceDesc') filtered = [...filtered].sort((a, b) => Number(b.rent || b.price || 0) - Number(a.rent || a.price || 0));
+    return filtered;
+  }, [rows, search, filter, sort]);
+
+  const submitHouse = async () => {
+    const user = getUser();
+    try {
+      await api.post('/api/house-rent/create', {
+        ownerId: user?.id || user?._id,
+        location: form.location,
+        rent: Number(form.rent || 0),
+        rooms: Number(form.rooms || 1),
+        description: form.description,
+      });
+      setForm({ location: '', rent: '', rooms: '', description: '' });
+      setShowModal(false);
+      await loadRows();
+    } catch {
+      setError('Failed to create house listing.');
+    }
   };
 
   return (
@@ -54,11 +90,13 @@ export default function HouseRentModern() {
         </div>
       </section>
 
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '64px 24px', color: 'var(--fg-muted)' }}>Loading house listings...</div>
+      ) : (
       <section className="bento-grid" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
         {items.map((item) => {
-          const stats = getStats(item);
           return (
-            <article key={item.id} className="surface-card reveal-on-scroll">
+            <article key={item._id || item.house_id} className="surface-card reveal-on-scroll">
               <div
                 style={{
                   borderRadius: 'var(--radius-md)',
@@ -73,21 +111,20 @@ export default function HouseRentModern() {
                 <i className="bi bi-building" style={{ fontSize: '2rem', color: 'var(--fg-muted)' }} />
               </div>
 
-              <h4 style={{ marginTop: 16 }}>{item.title}</h4>
+              <h4 style={{ marginTop: 16 }}>{item.title || item.location}</h4>
               <div style={{ marginBottom: 6 }}>
                 <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', fontWeight: 700, color: 'var(--accent)' }}>
-                  {item.price.split(' ')[0]} BDT
+                  {Number(item.rent || item.price || 0).toLocaleString()} BDT
                 </span>
                 <span style={{ color: 'var(--fg-muted)', marginLeft: 6 }}>/month</span>
               </div>
 
               <div style={{ display: 'flex', gap: 16, color: 'var(--fg-muted)', fontSize: '0.875rem', margin: '12px 0' }}>
-                <span><i className="bi bi-rulers me-1" />{stats.area} sqft</span>
-                <span><i className="bi bi-door-open me-1" />{stats.beds} beds</span>
-                <span><i className="bi bi-droplet me-1" />{stats.baths} baths</span>
+                <span><i className="bi bi-geo-alt me-1" />{item.location || '-'}</span>
+                <span><i className="bi bi-door-open me-1" />{item.rooms || 1} rooms</span>
               </div>
 
-              <StatusBadge status={item.status} />
+              <StatusBadge status="available" />
               <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
                 <button className="btn-primary" type="button">Apply</button>
                 <button className="btn-ghost" type="button">Details</button>
@@ -96,6 +133,8 @@ export default function HouseRentModern() {
           );
         })}
       </section>
+      )}
+      {error && <div style={{ color: 'var(--danger)', marginTop: 8 }}>{error}</div>}
 
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
@@ -104,19 +143,23 @@ export default function HouseRentModern() {
               <h5 className="modal-title">Post Rental Property</h5>
             </div>
             <div className="form-group">
-              <label className="form-label">Property Title</label>
-              <input className="app-input" placeholder="Property title" />
-            </div>
-            <div className="form-group">
               <label className="form-label">Location</label>
-              <input className="app-input" placeholder="Location" />
+              <input className="app-input" placeholder="Location" value={form.location} onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))} />
             </div>
             <div className="form-group">
               <label className="form-label">Monthly Rent</label>
-              <input className="app-input" type="number" placeholder="Rent amount" />
+              <input className="app-input" type="number" placeholder="Rent amount" value={form.rent} onChange={(e) => setForm((f) => ({ ...f, rent: e.target.value }))} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Rooms</label>
+              <input className="app-input" type="number" placeholder="Rooms" value={form.rooms} onChange={(e) => setForm((f) => ({ ...f, rooms: e.target.value }))} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Description</label>
+              <textarea className="app-input" rows={4} placeholder="Description" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-              <button className="btn-primary" type="button" onClick={() => setShowModal(false)}>Post Property</button>
+              <button className="btn-primary" type="button" onClick={submitHouse}>Post Property</button>
               <button className="btn-ghost" type="button" onClick={() => setShowModal(false)}>Cancel</button>
             </div>
           </div>

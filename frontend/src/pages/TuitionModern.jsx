@@ -1,31 +1,70 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import AppShell from '../components/AppShell.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
-
-const data = [
-  { id: 't1', title: 'HSC Physics Tutor', location: 'Dhanmondi', price: '8000 BDT', status: 'Pending', contact: '017XXXXXXXX' },
-  { id: 't2', title: 'CSE Algorithm Mentor', location: 'Mohammadpur', price: '12000 BDT', status: 'Approved', contact: '018XXXXXXXX' },
-  { id: 't3', title: 'English Language Tutor', location: 'Mirpur', price: '7000 BDT', status: 'Booked', contact: '019XXXXXXXX' },
-];
+import api from '../components/axios.jsx';
+import { getUser } from '../lib/auth';
 
 export default function TuitionModern() {
+  const [rows, setRows] = useState([]);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
   const [sort, setSort] = useState('latest');
   const [showModal, setShowModal] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [form, setForm] = useState({ subject: '', location: '', salary: '' });
+
+  const loadRows = async () => {
+    try {
+      setLoading(true);
+      const { data } = await api.get('/api/tuitions');
+      setRows(Array.isArray(data) ? data : []);
+      setError('');
+    } catch {
+      setError('Failed to load tuition listings.');
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadRows();
+  }, []);
 
   const items = useMemo(() => {
     const q = search.trim().toLowerCase();
-    let rows = data.filter((item) => {
-      const matchesQ = !q || `${item.title} ${item.location} ${item.contact}`.toLowerCase().includes(q);
-      const matchesFilter = filter === 'all' || item.status.toLowerCase().includes(filter);
+    let filtered = rows.filter((item) => {
+      const title = item.title || item.subject || '';
+      const location = item.location || '';
+      const status = (item.status || 'open').toLowerCase();
+      const matchesQ = !q || `${title} ${location}`.toLowerCase().includes(q);
+      const matchesFilter = filter === 'all' || status.includes(filter);
       return matchesQ && matchesFilter;
     });
 
-    if (sort === 'priceAsc') rows = [...rows].sort((a, b) => Number(a.price) - Number(b.price));
-    if (sort === 'priceDesc') rows = [...rows].sort((a, b) => Number(b.price) - Number(a.price));
-    return rows;
-  }, [search, filter, sort]);
+    if (sort === 'priceAsc') filtered = [...filtered].sort((a, b) => Number(a.salary || 0) - Number(b.salary || 0));
+    if (sort === 'priceDesc') filtered = [...filtered].sort((a, b) => Number(b.salary || 0) - Number(a.salary || 0));
+    return filtered;
+  }, [rows, search, filter, sort]);
+
+  const submitPost = async () => {
+    const user = getUser();
+    try {
+      await api.post('/api/tuitions', {
+        userId: user?.id || user?._id,
+        subject: form.subject,
+        location: form.location,
+        salary: Number(form.salary || 0),
+        status: 'open',
+      });
+      setForm({ subject: '', location: '', salary: '' });
+      setShowModal(false);
+      await loadRows();
+    } catch {
+      setError('Failed to create tuition listing.');
+    }
+  };
 
   return (
     <AppShell>
@@ -54,7 +93,9 @@ export default function TuitionModern() {
         </div>
       </section>
 
-      {items.length === 0 ? (
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '64px 24px', color: 'var(--fg-muted)' }}>Loading tuition listings...</div>
+      ) : items.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '64px 24px', color: 'var(--fg-muted)' }}>
           <i className="bi bi-journal-x" style={{ fontSize: '3rem', marginBottom: 16, display: 'block' }} />
           <h4>No tuition listings yet</h4>
@@ -66,13 +107,13 @@ export default function TuitionModern() {
       ) : (
         <section className="bento-grid" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
           {items.map((item) => (
-            <article key={item.id} className="feature-card reveal-on-scroll">
+            <article key={item._id || item.tuition_id} className="feature-card reveal-on-scroll">
               <div className="feature-card-icon">
                 <i className="bi bi-journal-text" />
               </div>
-              <h4>{item.title}</h4>
-              <p>{item.location} - {item.price}</p>
-              <StatusBadge status={item.status} />
+              <h4>{item.title || item.subject}</h4>
+              <p>{item.location} - {Number(item.salary || 0).toLocaleString()} BDT</p>
+              <StatusBadge status={item.status || 'open'} />
               <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
                 <button className="btn-primary" type="button">Book</button>
                 <button className="btn-ghost" type="button">Details</button>
@@ -81,6 +122,7 @@ export default function TuitionModern() {
           ))}
         </section>
       )}
+      {error && <div style={{ color: 'var(--danger)', marginTop: 8 }}>{error}</div>}
 
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
@@ -90,18 +132,18 @@ export default function TuitionModern() {
             </div>
             <div className="form-group">
               <label className="form-label">Subject</label>
-              <input className="app-input" placeholder="Enter subject" />
+              <input className="app-input" placeholder="Enter subject" value={form.subject} onChange={(e) => setForm((f) => ({ ...f, subject: e.target.value }))} />
             </div>
             <div className="form-group">
               <label className="form-label">Location</label>
-              <input className="app-input" placeholder="Enter location" />
+              <input className="app-input" placeholder="Enter location" value={form.location} onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))} />
             </div>
             <div className="form-group">
               <label className="form-label">Rate</label>
-              <input className="app-input" type="number" placeholder="Monthly rate" />
+              <input className="app-input" type="number" placeholder="Monthly rate" value={form.salary} onChange={(e) => setForm((f) => ({ ...f, salary: e.target.value }))} />
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-              <button className="btn-primary" type="button" onClick={() => setShowModal(false)}>Post Tuition</button>
+              <button className="btn-primary" type="button" onClick={submitPost}>Post Tuition</button>
               <button className="btn-ghost" type="button" onClick={() => setShowModal(false)}>Cancel</button>
             </div>
           </div>

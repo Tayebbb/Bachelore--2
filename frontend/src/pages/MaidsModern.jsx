@@ -1,26 +1,63 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import AppShell from '../components/AppShell.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
-
-const data = [
-  { id: 'm1', title: 'Part-time Home Cleaning', location: 'Badda', price: '300/hr', status: 'Pending', contact: '017XXXXXXXX' },
-  { id: 'm2', title: 'Weekend Kitchen Support', location: 'Uttara', price: '350/hr', status: 'Approved', contact: '018XXXXXXXX' },
-  { id: 'm3', title: 'Laundry + Cleaning', location: 'Dhanmondi', price: '320/hr', status: 'Booked', contact: '019XXXXXXXX' },
-];
+import api from '../components/axios.jsx';
+import { getUser } from '../lib/auth';
 
 export default function MaidsModern() {
+  const [rows, setRows] = useState([]);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
   const [bookingOpen, setBookingOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [form, setForm] = useState({ availability: '', location: '', salary: '' });
+
+  const loadRows = async () => {
+    try {
+      setLoading(true);
+      const { data } = await api.get('/api/maids');
+      setRows(Array.isArray(data) ? data : []);
+      setError('');
+    } catch {
+      setRows([]);
+      setError('Failed to load maid services.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadRows();
+  }, []);
 
   const items = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return data.filter((item) => {
-      const matchesQ = !q || `${item.title} ${item.location} ${item.contact}`.toLowerCase().includes(q);
-      const matchesFilter = filter === 'all' || item.status.toLowerCase().includes(filter);
+    return rows.filter((item) => {
+      const name = item.name || item.availability || '';
+      const location = item.location || '';
+      const matchesQ = !q || `${name} ${location}`.toLowerCase().includes(q);
+      const matchesFilter = filter === 'all' || location.toLowerCase().includes(filter);
       return matchesQ && matchesFilter;
     });
-  }, [search, filter]);
+  }, [rows, search, filter]);
+
+  const submitMaid = async () => {
+    const user = getUser();
+    try {
+      await api.post('/api/maids', {
+        userId: user?.id || user?._id,
+        availability: form.availability,
+        location: form.location,
+        salary: Number(form.salary || 0),
+      });
+      setForm({ availability: '', location: '', salary: '' });
+      setBookingOpen(false);
+      await loadRows();
+    } catch {
+      setError('Failed to create maid listing.');
+    }
+  };
 
   const getInitials = (name) => name?.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2) || 'M';
 
@@ -44,9 +81,12 @@ export default function MaidsModern() {
         </div>
       </section>
 
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '64px 24px', color: 'var(--fg-muted)' }}>Loading maid services...</div>
+      ) : (
       <section className="bento-grid" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
         {items.map((item) => (
-          <article key={item.id} className="surface-card reveal-on-scroll">
+          <article key={item._id || item.maid_id} className="surface-card reveal-on-scroll">
             <div
               style={{
                 width: 64,
@@ -60,12 +100,12 @@ export default function MaidsModern() {
                 marginBottom: 12,
               }}
             >
-              {getInitials(item.title)}
+              {getInitials(item.name || item.availability)}
             </div>
-            <h4>{item.title}</h4>
+            <h4>{item.name || item.availability}</h4>
             <div className="text-label">Home Care Specialist</div>
-            <p style={{ color: 'var(--fg-muted)', marginTop: 8 }}>{item.location} - {item.price}</p>
-            <StatusBadge status={item.status} />
+            <p style={{ color: 'var(--fg-muted)', marginTop: 8 }}>{item.location} - {Number(item.salary || item.hourlyRate || 0).toLocaleString()} BDT/hr</p>
+            <StatusBadge status={item.availability || 'available'} />
             <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
               <button className="btn-primary" type="button" onClick={() => setBookingOpen(true)}>Book</button>
               <button className="btn-ghost" type="button">Profile</button>
@@ -73,6 +113,8 @@ export default function MaidsModern() {
           </article>
         ))}
       </section>
+      )}
+      {error && <div style={{ color: 'var(--danger)', marginTop: 8 }}>{error}</div>}
 
       {bookingOpen && (
         <div className="modal-overlay" onClick={() => setBookingOpen(false)}>
@@ -81,24 +123,19 @@ export default function MaidsModern() {
               <h5 className="modal-title">Book Maid Service</h5>
             </div>
             <div className="form-group">
-              <label className="form-label">Service Date</label>
-              <input className="app-input" type="date" />
+              <label className="form-label">Service Name</label>
+              <input className="app-input" value={form.availability} onChange={(e) => setForm((f) => ({ ...f, availability: e.target.value }))} placeholder="e.g., Weekend Support" />
             </div>
             <div className="form-group">
-              <label className="form-label">Service Type</label>
-              <select className="app-select">
-                <option>Cleaning</option>
-                <option>Cooking</option>
-                <option>Laundry</option>
-                <option>Full Service</option>
-              </select>
+              <label className="form-label">Location</label>
+              <input className="app-input" value={form.location} onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))} placeholder="Area" />
             </div>
             <div className="form-group">
-              <label className="form-label">Notes</label>
-              <textarea className="app-input" rows={4} placeholder="Additional details" />
+              <label className="form-label">Hourly Rate</label>
+              <input className="app-input" type="number" value={form.salary} onChange={(e) => setForm((f) => ({ ...f, salary: e.target.value }))} placeholder="Rate" />
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-              <button className="btn-primary" type="button" onClick={() => setBookingOpen(false)}>Confirm Booking</button>
+              <button className="btn-primary" type="button" onClick={submitMaid}>Confirm</button>
               <button className="btn-ghost" type="button" onClick={() => setBookingOpen(false)}>Cancel</button>
             </div>
           </div>

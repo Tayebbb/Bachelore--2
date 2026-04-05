@@ -29,7 +29,7 @@ const Login = () => {
       if (data && data.user) {
         // store auth flag / user and navigate
         try {
-          authLogin(data.user)
+          authLogin(data.user, data.token)
         } catch (authErr) {
           console.error('Auth state save failed:', authErr)
         }

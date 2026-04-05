@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import apiRouter from './routes/api.js';
 import activityRouter from './routes/activity.js';
+import adminRouter from './routes/admin.js';
 
 const app = express();
 
@@ -10,6 +11,7 @@ app.use(express.json({ limit: '1mb' }));
 
 app.use('/api', apiRouter);
 app.use('/api/activity', activityRouter); // New: mount activity router
+app.use('/api/admin', adminRouter);
 
 app.get('/', (_req, res) => {
   res.json({ name: 'BacheLORE API', status: 'ok' });

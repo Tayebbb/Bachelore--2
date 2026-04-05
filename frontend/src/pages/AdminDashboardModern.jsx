@@ -1,30 +1,53 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import AppShell from '../components/AppShell.jsx';
-
-const metrics = [
-  { key: 'users', label: 'User Count', value: '12,450', trend: '+4.2%', trendType: 'success' },
-  { key: 'reports', label: 'Pending Reports', value: '38', trend: '-8.1%', trendType: 'danger' },
-  { key: 'revenue', label: 'Total Revenue', value: '420K', trend: '+6.7%', trendType: 'success' },
-  { key: 'listings', label: 'Active Listings', value: '1,284', trend: '+2.4%', trendType: 'success' },
-];
-
-const rows = [
-  { id: 'u1', name: 'Tanvir Hasan', email: 'tanvir@example.com', role: 'User', status: 'Pending' },
-  { id: 'u2', name: 'Ayesha Rahman', email: 'ayesha@example.com', role: 'Host', status: 'Approved' },
-  { id: 'u3', name: 'Nafis Ahmed', email: 'nafis@example.com', role: 'Seller', status: 'Pending' },
-];
+import api from '../components/axios.jsx';
 
 export default function AdminDashboardModern() {
   const [activeFilter, setActiveFilter] = useState('All');
   const [confirmModal, setConfirmModal] = useState(false);
   const [target, setTarget] = useState(null);
+  const [overview, setOverview] = useState(null);
+  const [rows, setRows] = useState([]);
 
-  const filters = ['All', 'Pending', 'Approved', 'Flagged'];
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [statsRes, usersRes] = await Promise.all([
+          api.get('/api/dashboard/stats'),
+          api.get('/api/users'),
+        ]);
+
+        setOverview(statsRes.data?.overview || null);
+        const users = Array.isArray(usersRes.data) ? usersRes.data : [];
+        setRows(users.map((u) => ({
+          id: u._id || u.user_id,
+          name: u.name || 'Unknown',
+          email: u.email || '-',
+          role: u.role || 'user',
+          status: 'Active',
+        })));
+      } catch {
+        setOverview(null);
+        setRows([]);
+      }
+    };
+
+    load();
+  }, []);
+
+  const metrics = [
+    { key: 'users', label: 'User Count', value: Number(rows.length).toLocaleString(), trend: 'Live', trendType: 'success' },
+    { key: 'reports', label: 'Pending Applications', value: Number(overview?.pendingApplications ?? 0).toLocaleString(), trend: 'Live', trendType: 'danger' },
+    { key: 'revenue', label: 'Total Revenue', value: Number(overview?.totalPayments ?? 0).toLocaleString(), trend: 'Live', trendType: 'success' },
+    { key: 'listings', label: 'Active Listings', value: Number(overview?.activeMarketplaceItems ?? 0).toLocaleString(), trend: 'Live', trendType: 'success' },
+  ];
+
+  const roles = ['All', ...Array.from(new Set(rows.map((r) => String(r.role || '').toLowerCase()))).map((r) => r.charAt(0).toUpperCase() + r.slice(1))];
 
   const filteredRows = useMemo(() => {
     if (activeFilter === 'All') return rows;
-    return rows.filter((r) => r.status.toLowerCase() === activeFilter.toLowerCase());
-  }, [activeFilter]);
+    return rows.filter((r) => String(r.role || '').toLowerCase() === activeFilter.toLowerCase());
+  }, [activeFilter, rows]);
 
   const handleBan = () => {
     setConfirmModal(false);
@@ -47,7 +70,7 @@ export default function AdminDashboardModern() {
 
       <section className="surface-card">
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          {filters.map((filter) => (
+          {roles.map((filter) => (
             <button
               key={filter}
               style={{
@@ -109,6 +132,11 @@ export default function AdminDashboardModern() {
                   </td>
                 </tr>
               ))}
+              {filteredRows.length === 0 && (
+                <tr>
+                  <td colSpan={5} style={{ textAlign: 'center', color: 'var(--fg-muted)' }}>No users found.</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
