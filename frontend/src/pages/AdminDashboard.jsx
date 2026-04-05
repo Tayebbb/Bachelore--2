@@ -15,7 +15,7 @@ export default function AdminDashboard() {
   const [tuitionsList, setTuitionsList] = useState([])
   const [maidsList, setMaidsList] = useState([])
   const [appliedRoommates, setAppliedRoommates] = useState([])
-  const [unverifiedHouseRent, setUnverifiedHouseRent] = useState([])
+  const [_unverifiedHouseRent, setUnverifiedHouseRent] = useState([])
   const [appliedToHost, setAppliedToHost] = useState([])
   const [bookedRoommates, setBookedRoommates] = useState([])
   const [houseForm, setHouseForm] = useState({ title: '', description: '', location: '', price: '', rooms: '', contact: '' });
@@ -203,7 +203,7 @@ export default function AdminDashboard() {
     }catch(e){ console.error(e); }
   }
 
-  const verifyHouseListing = async (id) => {
+  const _verifyHouseListing = async (id) => {
     setMsg(''); setError('');
     try{
       const token = localStorage.getItem('adminToken');
@@ -216,7 +216,7 @@ export default function AdminDashboard() {
     }catch(err){ setError('Network error'); }
   }
 
-  const deleteHouseListing = async (id) => {
+  const _deleteHouseListing = async (id) => {
     try{
       const token = localStorage.getItem('adminToken');
       const headers = { 'Content-Type': 'application/json' };

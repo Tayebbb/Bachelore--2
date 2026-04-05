@@ -1,21 +1,21 @@
 import React, { useState, useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 
-import Home from '../pages/Home.jsx'
-import PublicHome from '../pages/PublicHome.jsx'
-import Login from '../pages/Login.jsx'
-import Signup from '../pages/Signup.jsx'
-import Tuition from '../pages/Tuition.jsx'
+import Home from '../pages/Dashboard.jsx'
+import PublicHome from '../pages/PublicHomeModern.jsx'
+import Login from '../pages/LoginModern.jsx'
+import Signup from '../pages/SignupModern.jsx'
+import Tuition from '../pages/TuitionModern.jsx'
 import Navbar from '../components/Navbar.jsx'
 import Footer from '../components/Footer.jsx'
-import Subscribe from '../pages/Subscribe.jsx'
-import Marketplace from '../pages/Marketplace.jsx'
-import Roommates from '../pages/Roommates.jsx'
-import Maids from '../pages/Maids.jsx'
-import HouseRent from '../pages/HouseRent.jsx'
+import Subscribe from '../pages/SubscriptionModern.jsx'
+import Marketplace from '../pages/MarketplaceModern.jsx'
+import Roommates from '../pages/RoommatesModern.jsx'
+import Maids from '../pages/MaidsModern.jsx'
+import HouseRent from '../pages/HouseRentModern.jsx'
 import RoommateListings from '../pages/RoommateListings.jsx'
-import AdminLogin from '../pages/AdminLogin.jsx'
-import AdminDashboard from '../pages/AdminDashboard.jsx'
+import AdminLogin from '../pages/AdminLoginModern.jsx'
+import AdminDashboard from '../pages/AdminDashboardModern.jsx'
 import AnnouncementsAll from '../pages/AnnouncementsAll.jsx'
 import AppliedTuitions from '../pages/AppliedTuitions.jsx'
 import BookedTuitions from '../pages/BookedTuitions.jsx'
@@ -32,6 +32,21 @@ import { isAuthed, onAuthChange, offAuthChange } from '../lib/auth'
 import { useLocation } from 'react-router-dom'
 
 export default function Router(){
+  const appShellRoutes = new Set([
+    '/home',
+    '/tuition',
+    '/maids',
+    '/roommates',
+    '/roommate-listings',
+    '/houserent',
+    '/marketplace',
+    '/subscription',
+    '/announcements-all',
+    '/applied-tuitions',
+    '/booked-tuitions',
+    '/admin-dashboard',
+  ])
+
   const PrivateRoute = ({ children }) => {
     const [authed, setAuthed] = useState(() => isAuthed())
     useEffect(() => {
@@ -42,9 +57,11 @@ export default function Router(){
     return authed ? children : <Navigate to="/login" replace />
   }
   const location = useLocation();
+  const hideGlobalChrome = location.pathname === '/'
+  const hideGlobalNavbar = hideGlobalChrome || appShellRoutes.has(location.pathname)
   return (
     <div className="app-layout">
-      <Navbar />
+      {!hideGlobalNavbar && <Navbar />}
       <div className="app-content">
         <Routes>
           <Route path="/" element={<PublicHome/>} />
@@ -73,8 +90,8 @@ export default function Router(){
           <Route path="*" element={<NotFound/>} />
         </Routes>
       </div>
-      {/* Only show global Footer if not on signup page */}
-      {location.pathname !== '/signup' && <Footer />}
+      {/* Public home has its own footer; signup keeps auth layout clean */}
+      {!hideGlobalChrome && location.pathname !== '/signup' && <Footer />}
     </div>
   )
 }

@@ -1,89 +1,64 @@
 import React from 'react';
-import { motion } from 'framer-motion';
-import StatusBadge from './StatusBadge.jsx';
+import { Link } from 'react-router-dom';
 
-export default function ModuleBoard({
-  title,
-  subtitle,
-  items,
-  filter,
-  setFilter,
-  sort,
-  setSort,
-  search,
-  setSearch,
-  onReset,
-}) {
+const modules = [
+  { key: 'tuition', title: 'Tuition', icon: 'bi-journal-text', desc: 'Find tutors and track sessions', path: '/tuition', available: true },
+  { key: 'maids', title: 'Maid Services', icon: 'bi-house-gear', desc: 'Book reliable housekeeping', path: '/maids', available: true },
+  { key: 'roommates', title: 'Roommates', icon: 'bi-people', desc: 'Find compatible living partners', path: '/roommates', available: true },
+  { key: 'houserent', title: 'House Rent', icon: 'bi-building', desc: 'Browse rental listings', path: '/houserent', available: true },
+  { key: 'marketplace', title: 'Marketplace', icon: 'bi-bag-check', desc: 'Buy and sell items nearby', path: '/marketplace', available: true },
+  { key: 'subscription', title: 'Subscription', icon: 'bi-credit-card', desc: 'Manage your plan', path: '/subscription', available: true },
+  { key: 'activities', title: 'Activity Log', icon: 'bi-clock-history', desc: 'Track all platform activity', path: '/activities', available: true },
+  { key: 'profile', title: 'Profile', icon: 'bi-person-circle', desc: 'Manage your account', path: '/profile', available: true },
+];
+
+export default function ModuleBoard() {
   return (
-    <div className="surface-card">
-      <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-        <div>
-          <h5 className="mb-1">{title}</h5>
-          <small className="text-secondary">{subtitle}</small>
-        </div>
-        <span className="text-secondary">{items.length} results</span>
-      </div>
-
-      <div className="filter-bar mb-3">
-        <div className="field wide">
-          <input
-            className="app-input"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by title, location, or contact"
-          />
-        </div>
-        <div className="field">
-          <select className="app-select" value={filter} onChange={(e) => setFilter(e.target.value)}>
-            <option value="all">All Status</option>
-            <option value="pending">Pending</option>
-            <option value="approved">Approved</option>
-            <option value="booked">Booked</option>
-          </select>
-        </div>
-        <div className="field">
-          <select className="app-select" value={sort} onChange={(e) => setSort(e.target.value)}>
-            <option value="latest">Latest</option>
-            <option value="priceAsc">Price: Low to High</option>
-            <option value="priceDesc">Price: High to Low</option>
-          </select>
-        </div>
-        <div className="field d-grid">
-          <button className="btn-soft" onClick={onReset} type="button">Reset</button>
-        </div>
-      </div>
-
-      <div className="table-responsive">
-        <table className="table-modern">
-          <thead>
-            <tr>
-              <th>Title</th>
-              <th>Location</th>
-              <th>Price</th>
-              <th>Status</th>
-              <th>Contact</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item, index) => (
-              <motion.tr
-                key={item.id}
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.03 }}
-              >
-                <td>{item.title}</td>
-                <td>{item.location}</td>
-                <td>{item.price}</td>
-                <td>
-                  <StatusBadge status={item.status} />
-                </td>
-                <td>{item.contact}</td>
-              </motion.tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+    <div className="bento-grid">
+      {modules.map((module) => (
+        module.available ? (
+          <Link
+            key={module.key}
+            to={module.path}
+            className="feature-card"
+            style={{ textDecoration: 'none' }}
+          >
+            <div className="feature-card-icon">
+              <i className={`bi ${module.icon}`} />
+            </div>
+            <h4>{module.title}</h4>
+            <p>{module.desc}</p>
+          </Link>
+        ) : (
+          <div
+            key={module.key}
+            className="feature-card"
+            style={{ opacity: 0.5, pointerEvents: 'none', cursor: 'not-allowed' }}
+          >
+            <div className="feature-card-icon">
+              <i className={`bi ${module.icon}`} />
+            </div>
+            <h4>{module.title}</h4>
+            <p>{module.desc}</p>
+            <span
+              style={{
+                display: 'inline-block',
+                padding: '2px 8px',
+                borderRadius: 4,
+                border: '1px solid var(--border)',
+                background: 'var(--bg-elevated)',
+                fontSize: '0.7rem',
+                fontWeight: 600,
+                textTransform: 'uppercase',
+                letterSpacing: '0.03em',
+                color: 'var(--fg-muted)',
+              }}
+            >
+              Coming Soon
+            </span>
+          </div>
+        )
+      ))}
     </div>
   );
 }

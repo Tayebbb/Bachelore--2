@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { Toaster, toast } from 'react-hot-toast';
 
@@ -17,62 +17,199 @@ export default function AppShell({ children }) {
   const location = useLocation();
   const [query, setQuery] = useState('');
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  React.useEffect(() => {
+  // Theme effect
+  useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
   }, [theme]);
+
+  // Scroll detection for glassmorphism effect
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 10);
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Respect system preference on mount
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme');
+    if (!savedTheme) {
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      setTheme(prefersDark ? 'dark' : 'light');
+    }
+  }, []);
 
   const pageTitle = useMemo(() => {
     const match = links.find((item) => item.to === location.pathname);
     return match ? match.label : 'BacheLORE';
   }, [location.pathname]);
 
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
+  };
+
   return (
     <div className="app-shell">
-      <Toaster position="top-right" />
-      <nav className="top-nav py-2">
-        <div className="container-fluid d-flex align-items-center justify-content-between gap-3">
-          <Link to="/" className="d-flex align-items-center gap-2 text-reset">
-            <span className="brand-mark">BL</span>
-            <div>
-              <div className="fw-bold">BacheLORE</div>
-              <small className="text-secondary">Bachelor Life Management</small>
-            </div>
-          </Link>
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          style: {
+            background: 'var(--bg-surface)',
+            color: 'var(--fg-primary)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-md)',
+          },
+        }}
+      />
 
-          <div className="d-flex align-items-center gap-2">
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Global search listings, users, payments..."
-              className="app-input"
-              style={{ minWidth: 280 }}
-            />
-            <button
-              className="btn-soft"
-              onClick={() => toast.success(query ? `Searching for: ${query}` : 'Type to search')}
-              type="button"
-            >
-              <i className="bi bi-search" />
-            </button>
-            <button
-              className="btn-soft"
-              onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-              type="button"
-            >
-              <i className={`bi ${theme === 'light' ? 'bi-moon-stars' : 'bi-brightness-high'}`} />
-            </button>
-            <button className="btn-soft" onClick={() => toast('3 new activity notifications')} type="button">
-              <i className="bi bi-bell" />
-            </button>
+      {/* Modern Glassmorphism Navigation */}
+      <nav className={`top-nav ${isScrolled ? 'scrolled' : ''}`}>
+        <div className="container">
+          <div className="nav-inner">
+            {/* Brand */}
+            <Link to="/" className="nav-brand">
+              <span className="brand-mark">BL</span>
+              <span>BacheLORE</span>
+            </Link>
+
+            {/* Desktop Navigation Links */}
+            <div className="nav-links d-none d-lg-flex">
+              {links.slice(0, 5).map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+                >
+                  {item.label}
+                </NavLink>
+              ))}
+            </div>
+
+            {/* Right Actions */}
+            <div className="nav-actions">
+              {/* Search Input - Desktop */}
+              <div className="d-none d-md-flex align-items-center gap-2">
+                <div className="position-relative">
+                  <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search..."
+                    className="app-input"
+                    style={{
+                      minWidth: 220,
+                      paddingLeft: 40,
+                      background: 'var(--bg-elevated)',
+                      border: 'none',
+                    }}
+                  />
+                  <i
+                    className="bi bi-search"
+                    style={{
+                      position: 'absolute',
+                      left: 14,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      color: 'var(--fg-muted)',
+                      fontSize: 14,
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Theme Toggle */}
+              <button
+                className="theme-toggle"
+                onClick={toggleTheme}
+                type="button"
+                aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+              >
+                <i
+                  className={`bi ${theme === 'light' ? 'bi-moon-stars' : 'bi-sun-fill'}`}
+                  style={{
+                    transition: 'transform 0.4s cubic-bezier(0.22, 1, 0.36, 1)',
+                  }}
+                />
+              </button>
+
+              {/* Notifications */}
+              <button
+                className="theme-toggle position-relative"
+                onClick={() => toast('3 new notifications')}
+                type="button"
+                aria-label="Notifications"
+              >
+                <i className="bi bi-bell" />
+                <span
+                  className="position-absolute"
+                  style={{
+                    top: 6,
+                    right: 6,
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    background: 'var(--accent)',
+                  }}
+                />
+              </button>
+
+              {/* Mobile Menu Toggle */}
+              <button
+                className="theme-toggle d-lg-none"
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                type="button"
+                aria-label="Toggle menu"
+              >
+                <i className={`bi ${mobileMenuOpen ? 'bi-x-lg' : 'bi-list'}`} />
+              </button>
+            </div>
           </div>
         </div>
+
+        {/* Mobile Menu Overlay */}
+        {mobileMenuOpen && (
+          <div
+            className="d-lg-none"
+            style={{
+              background: 'var(--bg-surface)',
+              borderTop: '1px solid var(--border)',
+              padding: '16px 24px',
+              animation: 'slideDown 0.3s ease',
+            }}
+          >
+            {links.map((item, index) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                onClick={() => setMobileMenuOpen(false)}
+                className={({ isActive }) => `
+                  d-flex align-items-center gap-3 py-3
+                  ${isActive ? 'text-primary' : 'text-muted'}
+                `}
+                style={{
+                  textDecoration: 'none',
+                  borderBottom: index < links.length - 1 ? '1px solid var(--border)' : 'none',
+                  animationDelay: `${index * 50}ms`,
+                }}
+              >
+                <i className={`bi ${item.icon}`} />
+                <span>{item.label}</span>
+              </NavLink>
+            ))}
+          </div>
+        )}
       </nav>
 
+      {/* Main Layout Grid */}
       <div className="layout-grid">
-        <aside className="sidebar">
-          <h6 className="mb-3">Navigation</h6>
+        {/* Sidebar Navigation */}
+        <aside className="sidebar d-none d-lg-block">
+          <h6 className="sidebar-title">Navigation</h6>
           {links.map((item) => (
             <NavLink
               key={item.to}
@@ -83,19 +220,47 @@ export default function AppShell({ children }) {
               <span>{item.label}</span>
             </NavLink>
           ))}
+
+          {/* Sidebar Footer */}
+          <div
+            style={{
+              marginTop: 32,
+              paddingTop: 24,
+              borderTop: '1px solid var(--border)',
+            }}
+          >
+            <div className="status-badge">
+              <span className="status-dot" />
+              <span>All systems operational</span>
+            </div>
+          </div>
         </aside>
 
+        {/* Main Content Area */}
         <main className="content-area">
-          <section className="surface-card d-flex align-items-center justify-content-between flex-wrap gap-2">
-            <div>
-              <h4 className="mb-1">{pageTitle}</h4>
-              <small className="text-secondary">Production-ready relational platform with modern UX</small>
-            </div>
-            <div className="d-flex align-items-center gap-2">
-              <button className="btn-soft" type="button">Export</button>
-              <button className="btn-gradient" type="button">Create New</button>
+          {/* Page Header Card */}
+          <section className="surface-card">
+            <div className="page-header">
+              <div>
+                <h4 style={{ marginBottom: 4, fontSize: '1.5rem' }}>{pageTitle}</h4>
+                <small style={{ color: 'var(--fg-muted)', fontSize: '0.9375rem' }}>
+                  Production-ready relational platform with modern UX
+                </small>
+              </div>
+              <div className="d-flex align-items-center gap-2">
+                <button className="btn-ghost" type="button">
+                  <i className="bi bi-download me-2" />
+                  Export
+                </button>
+                <button className="btn-primary" type="button">
+                  <i className="bi bi-plus-lg me-2" />
+                  Create New
+                </button>
+              </div>
             </div>
           </section>
+
+          {/* Page Content */}
           {children}
         </main>
       </div>

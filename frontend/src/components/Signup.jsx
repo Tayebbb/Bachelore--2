@@ -1,6 +1,5 @@
 
 import React, { useState } from "react";
-import Navbar from "./Navbar";
 import bg1image from "../assets/bg1image.jpg";
 import "../App.css";
 import AuthCard from './AuthCard'
@@ -59,7 +58,6 @@ const Signup = () => {
     <>
       <img src={bg1image} alt="Background" className="background-image" />
       <div className="app-container">
-        <Navbar />
         <AuthCard title="Sign Up">
             <form className="auth-form" onSubmit={handleSubmit} style={{ width: '100%', maxWidth: 340, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
               <input
@@ -92,7 +90,13 @@ const Signup = () => {
               />
               {error && <div className="auth-error">{error}</div>}
               {success && <div className="auth-success">{success}</div>}
-              <button type="submit" className="auth-btn signup-gradient-btn auth-submit-btn">Sign Up</button>
+              <button
+                type="submit"
+                className="auth-btn signup-gradient-btn auth-submit-btn"
+                disabled={loading}
+              >
+                {loading ? 'Signing up...' : 'Sign Up'}
+              </button>
             </form>
         </AuthCard>
       </div>

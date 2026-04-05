@@ -3,8 +3,8 @@ import React, { useState } from 'react'
 export default function Bills(){
   const [total, setTotal] = useState('')
   const [people, setPeople] = useState(2)
-  const [tip, setTip] = useState(0)
-  const [tax, setTax] = useState(0)
+  const [tip, _setTip] = useState(0)
+  const [tax, _setTax] = useState(0)
   const [segments, setSegments] = useState([])
   const [segName, setSegName] = useState('')
   const [segAmount, setSegAmount] = useState('')

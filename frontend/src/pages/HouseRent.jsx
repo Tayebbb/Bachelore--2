@@ -16,7 +16,7 @@ export default function HouseRent() {
         setListings(res.data);
         setLoading(false);
       })
-      .catch((err) => {
+      .catch(() => {
         setError("Failed to load listings");
         setLoading(false);
       });
@@ -163,7 +163,7 @@ function HouseContactModal() {
         setVisible(false);
         setStatus("");
       }, 1200);
-    } catch (err) {
+    } catch {
       setStatus("Failed to send message");
     }
   };

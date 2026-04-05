@@ -1,11 +1,9 @@
 import React, { useState, useEffect } from 'react'
 import Announcements from '../components/Announcements'
 import { Link } from 'react-router-dom'
-import { motion } from 'framer-motion'
 
 
 import FEATURES from '../data/features'
-import useCarouselAutoplay from '../hooks/useCarouselAutoplay'
 import FeatureCard from '../components/FeatureCard'
 import ActivityFeed from '../components/ActivityFeed.jsx';
 import api from '../components/axios.jsx';
@@ -29,8 +27,6 @@ export default function Home() {
       .then(({ data }) => setStats(data?.overview || null))
       .catch(() => setStats(null))
   }, [])
-
-  const trackRef = useCarouselAutoplay({ intervalMs: 3000, mobileThreshold: 768 })
 
   return (
     <main>
@@ -122,16 +118,13 @@ export default function Home() {
           <span className="icon-label"><i className="bi-grid-3x3-gap-fill" /> Organized modules</span>
         </div>
         <div className="row g-4">
-          {FEATURES.map((f, index)=> (
-            <motion.div
+          {FEATURES.map((f)=> (
+            <div
               className="col-6 col-md-4"
               key={f.key}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.2, delay: index * 0.03 }}
             >
               <FeatureCard feature={f} />
-            </motion.div>
+            </div>
           ))}
         </div>
       </section>

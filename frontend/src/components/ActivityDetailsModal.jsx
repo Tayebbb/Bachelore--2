@@ -21,7 +21,7 @@ export default function ActivityDetailsModal({ show, onClose, item }) {
               {item.date && <div className="small text-secondary mb-2">{new Date(item.date).toLocaleString()}</div>}
             </div>
             <div className="row g-2">
-              {item.details && Object.entries(item.details).filter(([k,v])=>v!==undefined&&v!=='').map(([key, value]) => {
+              {item.details && Object.entries(item.details).filter(([_k, v])=>v!==undefined&&v!=='').map(([key, value]) => {
                 const label = key === 'Message' ? 'Profile' : key;
                 return (
                   <div className="col-12 col-md-6" key={key}>
