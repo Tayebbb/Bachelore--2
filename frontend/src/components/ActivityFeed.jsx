@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getUser } from '../lib/auth';
 import ActivityDetailsModal from './ActivityDetailsModal';
+import api from './axios.jsx';
 
 function timeAgo(dateString) {
   if (!dateString) return '';
@@ -25,21 +26,57 @@ export default function ActivityFeed() {
 
   useEffect(() => {
     const user = getUser();
-    if (!user || !user.email) {
+    if (!user || !user.user_id) {
       setError('Not logged in');
       setLoading(false);
       return;
     }
-    fetch(`/api/activity/${encodeURIComponent(user.email)}`)
-      .then(res => res.json())
-      .then(data => {
-        setActivity(data);
-        setLoading(false);
-      })
-      .catch(() => {
+
+    const loadActivity = async () => {
+      try {
+        const { data } = await api.get('/api/activity', { params: { userId: user.user_id } });
+        const mapped = {
+          bookedMaids: data.filter((row) => row.reference_table === 'BOOKEDMAIDS').map((row) => ({
+            name: row.action_type,
+            bookedAt: row.timestamp,
+            status: 'booked',
+          })),
+          bookedTuitions: data.filter((row) => row.reference_table === 'BOOKEDTUITIONS').map((row) => ({
+            title: row.action_type,
+            bookedAt: row.timestamp,
+            status: 'booked',
+          })),
+          appliedMaids: data.filter((row) => row.reference_table === 'APPLIEDMAIDS').map((row) => ({
+            name: row.action_type,
+            createdAt: row.timestamp,
+            status: 'applied',
+          })),
+          appliedTuitions: data.filter((row) => row.reference_table === 'APPLIEDTUITIONS').map((row) => ({
+            title: row.action_type,
+            createdAt: row.timestamp,
+            status: 'applied',
+          })),
+          roommateListings: data.filter((row) => row.reference_table === 'ROOMMATELISTINGS').map((row) => ({
+            name: row.action_type,
+            createdAt: row.timestamp,
+          })),
+          houseRentListings: data.filter((row) => row.reference_table === 'HOUSERENTLISTINGS').map((row) => ({
+            title: row.action_type,
+            createdAt: row.timestamp,
+          })),
+        };
+        setActivity(mapped);
+        setError(null);
+      } catch {
         setError('Failed to load activity');
+      } finally {
         setLoading(false);
-      });
+      }
+    };
+
+    loadActivity();
+    const timer = setInterval(loadActivity, 15000);
+    return () => clearInterval(timer);
   }, []);
 
   if (loading) return <div>Loading activity...</div>;

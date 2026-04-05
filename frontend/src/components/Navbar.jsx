@@ -6,8 +6,24 @@ export default function Navbar(){
   const navRef = useRef(null)
   const [authed, setAuthed] = useState(()=> isAuthed())
   const [menuOpen, setMenuOpen] = useState(false)
+  const [theme, setTheme] = useState(() => {
+    try {
+      return localStorage.getItem('bachelore_theme') || 'light'
+    } catch (_) {
+      return 'light'
+    }
+  })
   const navigate = useNavigate()
   const location = useLocation()
+
+  const toggleTheme = () => {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark'
+    setTheme(nextTheme)
+    document.documentElement.setAttribute('data-theme', nextTheme)
+    try {
+      localStorage.setItem('bachelore_theme', nextTheme)
+    } catch (_) {}
+  }
 
   const handleLogout = () => {
     authLogout()
@@ -37,6 +53,10 @@ export default function Navbar(){
     setMenuOpen(false)
   }, [location.pathname])
 
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+  }, [theme])
+
   return (
   <nav ref={navRef} className="navbar navbar-expand-lg sticky-top navbar-custom">
     <div className="container">
@@ -58,13 +78,20 @@ export default function Navbar(){
 
       <div className="d-none d-lg-flex ms-auto" id="mainNavDesktop">
         <ul className="navbar-nav ms-auto mb-2 mb-lg-0 d-flex align-items-lg-center navbar-links">
+          <li className="nav-item"><Link className="nav-link" to="/home">Dashboard</Link></li>
           <li className="nav-item"><Link className="nav-link" to="/roommates">Roommates</Link></li>
           <li className="nav-item"><Link className="nav-link" to="/maids">Maids</Link></li>
           <li className="nav-item"><Link className="nav-link" to="/tuition">Tuition</Link></li>
-          <li className="nav-item"><Link className="nav-link" to="/bills">Bills</Link></li>
+          <li className="nav-item"><Link className="nav-link" to="/houserent">House Rent</Link></li>
           <li className="nav-item"><Link className="nav-link" to="/marketplace">Marketplace</Link></li>
           <li className="nav-item"><Link className="nav-link" to="/subscription-payments">Payments</Link></li>
           <li className="nav-item"><Link className="nav-link" to="/activities">Activity Log</Link></li>
+          <li className="nav-item"><Link className="nav-link" to="/profile">Profile</Link></li>
+          <li className="nav-item ms-lg-2 mt-2 mt-lg-0">
+            <button className="btn btn-outline-secondary btn-sm w-100 w-lg-auto text-center" onClick={toggleTheme}>
+              {theme === 'dark' ? 'Light' : 'Dark'}
+            </button>
+          </li>
           {(!authed || location.pathname === '/') ? (
             <>
               <li className="nav-item mt-2 mt-lg-0">
@@ -87,13 +114,20 @@ export default function Navbar(){
         className={`navbar-mobile-panel d-lg-none ${menuOpen ? 'open' : ''}`}
       >
         <ul className="navbar-nav navbar-links-mobile">
+          <li className="nav-item"><Link className="nav-link" to="/home">Dashboard</Link></li>
           <li className="nav-item"><Link className="nav-link" to="/roommates">Roommates</Link></li>
           <li className="nav-item"><Link className="nav-link" to="/maids">Maids</Link></li>
           <li className="nav-item"><Link className="nav-link" to="/tuition">Tuition</Link></li>
-          <li className="nav-item"><Link className="nav-link" to="/bills">Bills</Link></li>
+          <li className="nav-item"><Link className="nav-link" to="/houserent">House Rent</Link></li>
           <li className="nav-item"><Link className="nav-link" to="/marketplace">Marketplace</Link></li>
           <li className="nav-item"><Link className="nav-link" to="/subscription-payments">Payments</Link></li>
           <li className="nav-item"><Link className="nav-link" to="/activities">Activity Log</Link></li>
+          <li className="nav-item"><Link className="nav-link" to="/profile">Profile</Link></li>
+          <li className="nav-item mt-2">
+            <button className="btn btn-outline-secondary btn-sm w-100 text-center" onClick={toggleTheme}>
+              {theme === 'dark' ? 'Light' : 'Dark'}
+            </button>
+          </li>
           {(!authed || location.pathname === '/') ? (
             <>
               <li className="nav-item mt-2">

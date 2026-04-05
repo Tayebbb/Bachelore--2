@@ -6,6 +6,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequest, getPool, sql } from '../db/connection.js';
+import { isAdminFromReq } from '../utils/auth.js';
 
 const router = express.Router();
 
@@ -86,6 +87,14 @@ async function resolveActorId(pool, preferredId) {
     .request()
     .query("SELECT TOP 1 user_id FROM dbo.USERS WHERE role = 'admin' ORDER BY created_at ASC");
   return fallback.recordset[0]?.user_id || null;
+}
+
+function ensureAdmin(req, res) {
+  if (!isAdminFromReq(req)) {
+    res.status(403).json({ msg: 'Admin access required for this endpoint.' });
+    return false;
+  }
+  return true;
 }
 
 router.get('/health', async (_req, res) => {
@@ -1138,6 +1147,294 @@ router.get('/subscription/payments/:userId', async (req, res) => {
     `);
   res.json(result.recordset);
 });
+
+  router.post('/subscription/process-transaction', async (req, res) => {
+    const pool = await getPool();
+    const tx = new sql.Transaction(pool);
+    try {
+      const userId = req.body.userId || req.body.user_id;
+      const amount = Number(req.body.amount ?? 99);
+      if (!userId || Number.isNaN(amount) || amount <= 0) {
+        return res.status(400).json({ msg: 'Valid userId and amount are required' });
+      }
+
+      await tx.begin();
+
+      const pendingInsert = await tx
+        .request()
+        .input('user_id', sql.UniqueIdentifier, userId)
+        .input('amount', sql.Decimal(10, 2), amount)
+        .query(`
+          INSERT INTO dbo.SUBSCRIPTIONPAYMENTS (user_id, amount, status)
+          OUTPUT INSERTED.payment_id, INSERTED.user_id, INSERTED.amount, INSERTED.status, INSERTED.payment_date
+          VALUES (@user_id, @amount, 'pending')
+        `);
+
+      const pendingPayment = pendingInsert.recordset[0];
+      if (!pendingPayment) {
+        throw new Error('Payment row was not created');
+      }
+
+      const finalized = await tx
+        .request()
+        .input('payment_id', sql.UniqueIdentifier, pendingPayment.payment_id)
+        .query(`
+          UPDATE dbo.SUBSCRIPTIONPAYMENTS
+          SET status = 'paid'
+          OUTPUT INSERTED.payment_id AS _id, INSERTED.payment_id, INSERTED.user_id,
+                 INSERTED.amount, INSERTED.status, INSERTED.payment_date
+          WHERE payment_id = @payment_id
+        `);
+
+      await logActivity(tx, userId, 'subscription_payment_processed', 'SUBSCRIPTIONPAYMENTS', pendingPayment.payment_id);
+      await tx.commit();
+      return res.status(201).json(finalized.recordset[0]);
+    } catch (error) {
+      if (tx._aborted !== true) {
+        await tx.rollback();
+      }
+      return res.status(500).json({ msg: 'Transactional payment processing failed', error: String(error.message || error) });
+    }
+  });
+
+  router.get('/dashboard/stats', async (_req, res) => {
+    try {
+      const pool = await getPool();
+      let result;
+      try {
+        result = await pool.request().query(`
+          SELECT
+            (SELECT COUNT(*) FROM dbo.BOOKEDTUITIONS)
+            + (SELECT COUNT(*) FROM dbo.BOOKEDMAIDS)
+            + (SELECT COUNT(*) FROM dbo.BOOKEDROOMMATES) AS totalBookings,
+            (SELECT COUNT(*) FROM dbo.APPLIEDTUITIONS WHERE status = 'pending')
+            + (SELECT COUNT(*) FROM dbo.APPLIEDMAIDS WHERE status = 'pending')
+            + (SELECT COUNT(*) FROM dbo.APPLIEDROOMMATES WHERE status = 'pending') AS pendingApplications,
+            (SELECT COUNT(*) FROM dbo.USERS WHERE role = 'student') AS totalStudents,
+            (SELECT ISNULL(SUM(amount), 0) FROM dbo.SUBSCRIPTIONPAYMENTS WHERE status = 'paid') AS totalPayments,
+            (SELECT COUNT(*) FROM dbo.MARKETPLACELISTINGS WHERE status = 'available') AS activeMarketplaceItems;
+
+          SELECT TOP 5
+            t.subject,
+            COUNT(*) AS bookingCount,
+            CAST(AVG(t.salary) AS DECIMAL(10,2)) AS averageSalary
+          FROM dbo.BOOKEDTUITIONS b
+          INNER JOIN dbo.APPLIEDTUITIONS a ON a.application_id = b.application_id
+          INNER JOIN dbo.TUITIONS t ON t.tuition_id = a.tuition_id
+          GROUP BY t.subject
+          HAVING COUNT(*) >= 1
+          ORDER BY bookingCount DESC, averageSalary DESC;
+
+          SELECT TOP 8 action_type, COUNT(*) AS actionCount
+          FROM dbo.USERACTIVITIES
+          GROUP BY action_type
+          ORDER BY actionCount DESC;
+        `);
+      } catch {
+        result = await pool.request().query(`
+          SELECT
+            (SELECT COUNT(*) FROM dbo.BookedTuitions)
+            + (SELECT COUNT(*) FROM dbo.BookedMaids)
+            + (SELECT COUNT(*) FROM dbo.BookedRoommates) AS totalBookings,
+            (SELECT COUNT(*) FROM dbo.AppliedTuitions WHERE Status = 'pending')
+            + (SELECT COUNT(*) FROM dbo.AppliedMaids WHERE Status = 'pending')
+            + (SELECT COUNT(*) FROM dbo.AppliedRoommates WHERE Status = 'pending') AS pendingApplications,
+            (SELECT COUNT(*) FROM dbo.Users WHERE Role = 'student') AS totalStudents,
+            (SELECT ISNULL(SUM(Amount), 0) FROM dbo.SubscriptionPayments WHERE Status = 'paid') AS totalPayments,
+            (SELECT COUNT(*) FROM dbo.MarketplaceListings WHERE Status = 'available') AS activeMarketplaceItems;
+
+          SELECT TOP 5
+            Subject,
+            COUNT(*) AS bookingCount,
+            CAST(AVG(TRY_CONVERT(DECIMAL(10,2), Salary)) AS DECIMAL(10,2)) AS averageSalary
+          FROM dbo.BookedTuitions
+          WHERE TRY_CONVERT(DECIMAL(10,2), Salary) IS NOT NULL
+          GROUP BY Subject
+          HAVING COUNT(*) >= 1
+          ORDER BY bookingCount DESC, averageSalary DESC;
+
+          IF OBJECT_ID('dbo.USERACTIVITIES', 'U') IS NOT NULL
+          BEGIN
+            SELECT TOP 8 action_type, COUNT(*) AS actionCount
+            FROM dbo.USERACTIVITIES
+            GROUP BY action_type
+            ORDER BY actionCount DESC;
+          END
+          ELSE
+          BEGIN
+            SELECT *
+            FROM (
+              SELECT 'booked_tuition' AS action_type, COUNT(*) AS actionCount FROM dbo.BookedTuitions
+              UNION ALL
+              SELECT 'booked_maid' AS action_type, COUNT(*) AS actionCount FROM dbo.BookedMaids
+              UNION ALL
+              SELECT 'booked_roommate' AS action_type, COUNT(*) AS actionCount FROM dbo.BookedRoommates
+              UNION ALL
+              SELECT 'payment' AS action_type, COUNT(*) AS actionCount FROM dbo.SubscriptionPayments
+            ) s
+            ORDER BY actionCount DESC;
+          END
+        `);
+      }
+
+      return res.json({
+        overview: result.recordsets[0]?.[0] || {},
+        topTuitions: result.recordsets[1] || [],
+        activitySummary: result.recordsets[2] || [],
+      });
+    } catch (error) {
+      return res.status(500).json({ msg: 'Failed to fetch dashboard stats', error: String(error.message || error) });
+    }
+  });
+
+  router.get('/sql/features', async (req, res) => {
+    if (!ensureAdmin(req, res)) return;
+
+    try {
+      const pool = await getPool();
+      let result;
+      try {
+        result = await pool.request().query(`
+          -- INNER JOIN demonstration
+          SELECT TOP 10 t.tuition_id, t.subject, u.name AS ownerName
+          FROM dbo.TUITIONS t
+          INNER JOIN dbo.USERS u ON u.user_id = t.user_id
+          ORDER BY t.created_at DESC;
+
+          -- LEFT JOIN demonstration
+          SELECT TOP 10 h.house_id, h.location, c.contact_id
+          FROM dbo.HOUSERENTLISTINGS h
+          LEFT JOIN dbo.HOUSECONTACTS c ON c.house_id = h.house_id
+          ORDER BY h.created_at DESC;
+
+          -- RIGHT JOIN demonstration
+          SELECT TOP 10 c.contact_id, c.house_id, h.location
+          FROM dbo.HOUSERENTLISTINGS h
+          RIGHT JOIN dbo.HOUSECONTACTS c ON c.house_id = h.house_id
+          ORDER BY c.created_at DESC;
+
+          -- FULL OUTER JOIN demonstration
+          SELECT TOP 10 r.listing_id, a.application_id
+          FROM dbo.ROOMMATELISTINGS r
+          FULL OUTER JOIN dbo.APPLIEDROOMMATES a ON a.listing_id = r.listing_id;
+
+          -- Aggregate + GROUP BY + HAVING demonstration
+          SELECT role, COUNT(*) AS userCount
+          FROM dbo.USERS
+          GROUP BY role
+          HAVING COUNT(*) >= 1;
+
+          -- Non-correlated subquery demonstration
+          SELECT tuition_id, subject, salary
+          FROM dbo.TUITIONS
+          WHERE salary > (SELECT AVG(salary) FROM dbo.TUITIONS);
+
+          -- Correlated subquery demonstration
+          SELECT u.user_id, u.name
+          FROM dbo.USERS u
+          WHERE EXISTS (
+            SELECT 1
+            FROM dbo.APPLIEDTUITIONS a
+            WHERE a.user_id = u.user_id
+          );
+
+          -- CROSS APPLY demonstration
+          SELECT TOP 10 u.user_id, u.name, x.latestAction, x.latestTimestamp
+          FROM dbo.USERS u
+          CROSS APPLY (
+            SELECT TOP 1 ua.action_type AS latestAction, ua.[timestamp] AS latestTimestamp
+            FROM dbo.USERACTIVITIES ua
+            WHERE ua.user_id = u.user_id
+            ORDER BY ua.[timestamp] DESC
+          ) x;
+
+          -- OUTER APPLY demonstration
+          SELECT TOP 10 u.user_id, u.name, y.latestPaymentAmount, y.latestPaymentDate
+          FROM dbo.USERS u
+          OUTER APPLY (
+            SELECT TOP 1 sp.amount AS latestPaymentAmount, sp.payment_date AS latestPaymentDate
+            FROM dbo.SUBSCRIPTIONPAYMENTS sp
+            WHERE sp.user_id = u.user_id
+            ORDER BY sp.payment_date DESC
+          ) y;
+        `);
+      } catch {
+        result = await pool.request().query(`
+          SELECT TOP 10 t.TuitionId, t.Subject, u.FullName AS ownerName
+          FROM dbo.Tuitions t
+          INNER JOIN dbo.Users u ON u.UserId = t.PostedBy
+          ORDER BY t.CreatedAt DESC;
+
+          SELECT TOP 10 u.UserId, u.FullName AS name, c.ContactId
+          FROM dbo.Users u
+          LEFT JOIN dbo.Contacts c ON c.SenderUserId = u.UserId
+          ORDER BY u.CreatedAt DESC;
+
+          SELECT TOP 10 c.ContactId, c.SenderUserId, u.FullName AS senderName
+          FROM dbo.Users u
+          RIGHT JOIN dbo.Contacts c ON c.SenderUserId = u.UserId
+          ORDER BY c.CreatedAt DESC;
+
+          SELECT TOP 10 r.RoommateListingId, a.AppliedToHostId
+          FROM dbo.RoommateListings r
+          FULL OUTER JOIN dbo.AppliedToHosts a ON a.RoommateListingId = r.RoommateListingId;
+
+          SELECT Role AS role, COUNT(*) AS userCount
+          FROM dbo.Users
+          GROUP BY Role
+          HAVING COUNT(*) >= 1;
+
+          SELECT TuitionId, Subject, Salary
+          FROM dbo.Tuitions
+          WHERE TRY_CONVERT(DECIMAL(10,2), Salary) > (
+            SELECT AVG(TRY_CONVERT(DECIMAL(10,2), Salary))
+            FROM dbo.Tuitions
+            WHERE TRY_CONVERT(DECIMAL(10,2), Salary) IS NOT NULL
+          );
+
+          SELECT u.UserId, u.FullName AS name
+          FROM dbo.Users u
+          WHERE EXISTS (
+            SELECT 1
+            FROM dbo.AppliedTuitions a
+            WHERE a.Email = u.Email
+          );
+
+          SELECT TOP 10 u.UserId, u.FullName AS name, x.latestAction, x.latestTimestamp
+          FROM dbo.Users u
+          CROSS APPLY (
+            SELECT TOP 1 at.Status AS latestAction, at.UpdatedAt AS latestTimestamp
+            FROM dbo.AppliedTuitions at
+            WHERE at.Email = u.Email
+            ORDER BY at.UpdatedAt DESC
+          ) x;
+
+          SELECT TOP 10 u.UserId, u.FullName AS name, y.latestPaymentAmount, y.latestPaymentDate
+          FROM dbo.Users u
+          OUTER APPLY (
+            SELECT TOP 1 sp.Amount AS latestPaymentAmount, sp.PaidAt AS latestPaymentDate
+            FROM dbo.SubscriptionPayments sp
+            WHERE sp.UserEmail = u.Email
+            ORDER BY sp.PaidAt DESC
+          ) y;
+        `);
+      }
+
+      return res.json({
+        innerJoin: result.recordsets[0] || [],
+        leftJoin: result.recordsets[1] || [],
+        rightJoin: result.recordsets[2] || [],
+        fullOuterJoin: result.recordsets[3] || [],
+        aggregates: result.recordsets[4] || [],
+        nonCorrelatedSubquery: result.recordsets[5] || [],
+        correlatedSubquery: result.recordsets[6] || [],
+        crossApply: result.recordsets[7] || [],
+        outerApply: result.recordsets[8] || [],
+      });
+    } catch (error) {
+      return res.status(500).json({ msg: 'Failed to run SQL feature demo queries', error: String(error.message || error) });
+    }
+  });
 
 router.get('/activity', async (req, res) => {
   const userId = req.query.userId;

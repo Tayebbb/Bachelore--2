@@ -9,7 +9,6 @@ import Tuition from '../pages/Tuition.jsx'
 import Navbar from '../components/Navbar.jsx'
 import Footer from '../components/Footer.jsx'
 import Subscribe from '../pages/Subscribe.jsx'
-import Bills from '../pages/Bills.jsx'
 import Marketplace from '../pages/Marketplace.jsx'
 import Roommates from '../pages/Roommates.jsx'
 import Maids from '../pages/Maids.jsx'
@@ -26,6 +25,8 @@ import AppliedRoommates from '../pages/AppliedRoommates.jsx'
 import BookedRoommates from '../pages/BookedRoommates.jsx'
 import SubscriptionPayments from '../pages/SubscriptionPayments.jsx'
 import UserActivities from '../pages/UserActivities.jsx'
+import Profile from '../pages/Profile.jsx'
+import NotFound from '../pages/NotFound.jsx'
 
 import { isAuthed, onAuthChange, offAuthChange } from '../lib/auth'
 import { useLocation } from 'react-router-dom'
@@ -50,16 +51,12 @@ export default function Router(){
           <Route path="/home" element={<PrivateRoute><Home/></PrivateRoute>} />
           <Route path="/login" element={<Login/>} />
           <Route path="/signup" element={<Signup />} />
-          <Route path="/dashboard" element={<div>Dashboard</div>} />
           <Route path="/roommates" element={<PrivateRoute><Roommates/></PrivateRoute>} />
           <Route path="/roommate-listings" element={<PrivateRoute><RoommateListings/></PrivateRoute>} />
           <Route path="/maids" element={<PrivateRoute><Maids/></PrivateRoute>} />
           <Route path="/tuition" element={<PrivateRoute><Tuition/></PrivateRoute>} />
-          <Route path="/bills" element={<PrivateRoute><Bills/></PrivateRoute>} />
           <Route path="/marketplace" element={<PrivateRoute><Marketplace/></PrivateRoute>} />
-          <Route path="/item/:id" element={<div>ItemDetail</div>} />
-          <Route path="/post" element={<div>PostItem</div>} />
-          <Route path="/profile" element={<div>Profile</div>} />
+          <Route path="/profile" element={<PrivateRoute><Profile/></PrivateRoute>} />
           <Route path="/houserent" element={<PrivateRoute><HouseRent/></PrivateRoute>} />
           <Route path="/subscription" element={<PrivateRoute><Subscribe/></PrivateRoute>} />
           <Route path="/subscription-payments" element={<PrivateRoute><SubscriptionPayments/></PrivateRoute>} />
@@ -73,7 +70,7 @@ export default function Router(){
           <Route path="/announcements-all" element={<AnnouncementsAll/>} />
           <Route path="/admin-login" element={<AdminLogin/>} />
           <Route path="/admin-dashboard" element={<AdminDashboard/>} />
-          <Route path="*" element={<div>NotFound</div>} />
+          <Route path="*" element={<NotFound/>} />
         </Routes>
       </div>
       {/* Only show global Footer if not on signup page */}

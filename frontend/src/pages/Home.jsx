@@ -8,18 +8,26 @@ import FEATURES from '../data/features'
 import useCarouselAutoplay from '../hooks/useCarouselAutoplay'
 import FeatureCard from '../components/FeatureCard'
 import ActivityFeed from '../components/ActivityFeed.jsx';
+import api from '../components/axios.jsx';
 
 export default function Home() {
   const [email, setEmail] = useState('')
   const [status, setStatus] = useState('idle')
   const [message, setMessage] = useState('')
   const [announcements, setAnnouncements] = useState([])
+  const [stats, setStats] = useState(null)
 
   useEffect(() => {
     fetch('/api/announcements')
       .then(res => res.json())
       .then(data => setAnnouncements(Array.isArray(data) ? data : data.announcements || []))
       .catch(() => setAnnouncements([]))
+  }, [])
+
+  useEffect(() => {
+    api.get('/api/dashboard/stats')
+      .then(({ data }) => setStats(data?.overview || null))
+      .catch(() => setStats(null))
   }, [])
 
   const trackRef = useCarouselAutoplay({ intervalMs: 3000, mobileThreshold: 768 })
@@ -70,6 +78,43 @@ export default function Home() {
           </div>
         </div>
       </header>
+
+      <section className="container py-4">
+        <div className="row g-3">
+          <div className="col-6 col-lg-3">
+            <div className="card shadow-sm h-100">
+              <div className="card-body">
+                <div className="text-muted small">Total Bookings</div>
+                <div className="h4 mb-0">{stats?.totalBookings ?? '-'}</div>
+              </div>
+            </div>
+          </div>
+          <div className="col-6 col-lg-3">
+            <div className="card shadow-sm h-100">
+              <div className="card-body">
+                <div className="text-muted small">Pending Applications</div>
+                <div className="h4 mb-0">{stats?.pendingApplications ?? '-'}</div>
+              </div>
+            </div>
+          </div>
+          <div className="col-6 col-lg-3">
+            <div className="card shadow-sm h-100">
+              <div className="card-body">
+                <div className="text-muted small">Total Payments</div>
+                <div className="h4 mb-0">{stats?.totalPayments ?? '-'}</div>
+              </div>
+            </div>
+          </div>
+          <div className="col-6 col-lg-3">
+            <div className="card shadow-sm h-100">
+              <div className="card-body">
+                <div className="text-muted small">Active Marketplace</div>
+                <div className="h4 mb-0">{stats?.activeMarketplaceItems ?? '-'}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section id="features" className="container py-5">
         <div className="section-header">
