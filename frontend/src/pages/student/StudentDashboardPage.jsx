@@ -9,6 +9,7 @@ export default function StudentDashboardPage() {
   const [requestStatuses, setRequestStatuses] = useState([]);
   const [myListings, setMyListings] = useState([]);
   const [isSubscribed, setIsSubscribed] = useState(false);
+  const [subscriptionActionLoading, setSubscriptionActionLoading] = useState(false);
   const [error, setError] = useState(null);
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const user = getUser();
@@ -59,6 +60,21 @@ export default function StudentDashboardPage() {
       marketplace: 'Marketplace'
     };
     return labels[type] || type;
+  };
+
+  const unsubscribe = async () => {
+    const ok = window.confirm('Are you sure you want to unsubscribe?');
+    if (!ok) return;
+
+    try {
+      setSubscriptionActionLoading(true);
+      await api.post('/api/student/subscription/unsubscribe');
+      setIsSubscribed(false);
+    } catch (err) {
+      console.error('Unsubscribe failed:', err);
+    } finally {
+      setSubscriptionActionLoading(false);
+    }
   };
 
   return (
@@ -114,7 +130,7 @@ export default function StudentDashboardPage() {
             border: `1px solid ${isSubscribed ? '#c3e6cb' : '#f5c6cb'}`,
             color: isSubscribed ? '#155724' : '#721c24'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', justifyContent: 'space-between' }}>
               <i className={`bi ${isSubscribed ? 'bi-check-circle-fill' : 'bi-exclamation-circle-fill'}`} style={{ fontSize: '1.5rem' }} />
               <div>
                 <strong>{isSubscribed ? 'Subscription Active' : 'Subscription Inactive'}</strong>
@@ -124,6 +140,16 @@ export default function StudentDashboardPage() {
                     : 'Upgrade to unlock premium features and post unlimited listings.'}
                 </p>
               </div>
+              {isSubscribed && (
+                <button
+                  type="button"
+                  className="panel-btn-sm danger"
+                  onClick={unsubscribe}
+                  disabled={subscriptionActionLoading}
+                >
+                  {subscriptionActionLoading ? 'Processing...' : 'Unsubscribe'}
+                </button>
+              )}
             </div>
           </div>
 
