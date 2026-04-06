@@ -20,6 +20,21 @@ async function logActivity(poolOrTx, userId, actionType, referenceTable, referen
     `);
 }
 
+async function hasActiveSubscription(pool, userId) {
+  const check = await pool
+    .request()
+    .input('user_id', sql.UniqueIdentifier, userId)
+    .query(`
+      SELECT TOP 1 status
+      FROM dbo.SUBSCRIPTIONPAYMENTS
+      WHERE user_id = @user_id
+      ORDER BY payment_date DESC;
+    `);
+
+  const latest = String(check.recordset?.[0]?.status || '').toLowerCase();
+  return latest === 'paid';
+}
+
 router.get('/dashboard', async (req, res) => {
   try {
     const userId = getAuthUserId(req);
@@ -323,6 +338,10 @@ router.post('/tuitions/:tuitionId/apply', async (req, res) => {
     const userId = getAuthUserId(req);
     const { tuitionId } = req.params;
     const pool = await getPool();
+    const subscribed = await hasActiveSubscription(pool, userId);
+    if (!subscribed) {
+      return res.status(403).json({ msg: 'Subscription required to apply for listings.' });
+    }
     const proc = await pool
       .request()
       .input('p_user_id', sql.UniqueIdentifier, userId)
@@ -361,6 +380,10 @@ router.post('/maids/:maidId/apply', async (req, res) => {
     const userId = getAuthUserId(req);
     const { maidId } = req.params;
     const pool = await getPool();
+    const subscribed = await hasActiveSubscription(pool, userId);
+    if (!subscribed) {
+      return res.status(403).json({ msg: 'Subscription required to apply for listings.' });
+    }
 
     const result = await pool
       .request()
@@ -421,6 +444,10 @@ router.post('/roommates', async (req, res) => {
     const userId = getAuthUserId(req);
     const { location, rent, preference, type = 'host' } = req.body;
     const pool = await getPool();
+    const subscribed = await hasActiveSubscription(pool, userId);
+    if (!subscribed) {
+      return res.status(403).json({ msg: 'Subscription required to create listings.' });
+    }
 
     const result = await pool
       .request()
@@ -447,6 +474,10 @@ router.post('/roommates/:listingId/apply', async (req, res) => {
     const userId = getAuthUserId(req);
     const { listingId } = req.params;
     const pool = await getPool();
+    const subscribed = await hasActiveSubscription(pool, userId);
+    if (!subscribed) {
+      return res.status(403).json({ msg: 'Subscription required to apply for listings.' });
+    }
 
     const existing = await pool
       .request()
@@ -501,6 +532,10 @@ router.post('/house-rent/contact', async (req, res) => {
     const userId = getAuthUserId(req);
     const { houseId, message } = req.body;
     const pool = await getPool();
+    const subscribed = await hasActiveSubscription(pool, userId);
+    if (!subscribed) {
+      return res.status(403).json({ msg: 'Subscription required to apply for listings.' });
+    }
 
     const result = await pool
       .request()
@@ -541,6 +576,10 @@ router.post('/marketplace', async (req, res) => {
     const userId = getAuthUserId(req);
     const { title, price, condition } = req.body;
     const pool = await getPool();
+    const subscribed = await hasActiveSubscription(pool, userId);
+    if (!subscribed) {
+      return res.status(403).json({ msg: 'Subscription required to create listings.' });
+    }
 
     const result = await pool
       .request()
@@ -566,6 +605,10 @@ router.post('/marketplace/:itemId/buy', async (req, res) => {
     const userId = getAuthUserId(req);
     const { itemId } = req.params;
     const pool = await getPool();
+    const subscribed = await hasActiveSubscription(pool, userId);
+    if (!subscribed) {
+      return res.status(403).json({ msg: 'Subscription required to apply for listings.' });
+    }
     const proc = await pool
       .request()
       .input('p_item_id', sql.UniqueIdentifier, itemId)
@@ -586,7 +629,12 @@ router.post('/subscription/pay', async (req, res) => {
   try {
     const userId = getAuthUserId(req);
     const amount = Number(req.body.amount || 99);
-    const paymentRef = req.body.paymentRef || null;
+    const bkashNumber = String(req.body.bkashNumber || '').trim();
+    const txReference = String(req.body.reference || req.body.paymentRef || '').trim();
+    const paymentRef = [
+      bkashNumber ? `BKASH:${bkashNumber}` : null,
+      txReference ? `REF:${txReference}` : null,
+    ].filter(Boolean).join('|') || null;
     const pool = await getPool();
 
     // Insert subscription payment record

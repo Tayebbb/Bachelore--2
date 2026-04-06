@@ -17,7 +17,7 @@ export default function SubscriptionModal({ show, onClose, onSuccess }) {
 
     setLoading(true);
     try {
-      const response = await api.post('/api/student/subscription/pay', {
+      await api.post('/api/student/subscription/pay', {
         bkashNumber,
         reference,
         amount: 99,

@@ -16,8 +16,7 @@ export default function StudentMaidsPage() {
     } catch {
       setRows([]);
     }
-    
-    // Fetch subscription status
+
     try {
       const { data } = await api.get('/api/student/dashboard');
       setIsSubscribed(data?.isSubscribed || false);
@@ -48,8 +47,8 @@ export default function StudentMaidsPage() {
   return (
     <div className="panel-page">
       <PopupMessage message={popup.message} show={popup.show} onClose={() => setPopup({ ...popup, show: false })} />
-      <SubscriptionModal 
-        show={showSubscriptionModal} 
+      <SubscriptionModal
+        show={showSubscriptionModal}
         onClose={() => setShowSubscriptionModal(false)}
         onSuccess={() => {
           setShowSubscriptionModal(false);
@@ -113,22 +112,6 @@ export default function StudentMaidsPage() {
                   <td>{row.availability}</td>
                   <td>{row.status}</td>
                   <td>
-                    {row.userApplicationStatus && (String(row.userApplicationStatus).toLowerCase() === 'pending' || String(row.userApplicationStatus).toLowerCase() === 'applied') ? (
-                      <button type="button" className="panel-btn-sm" style={{ background: '#ccc', color: '#888', cursor: 'not-allowed', opacity: 0.7 }} disabled>
-                        Applied
-                      </button>
-                    ) : (
-                      <button type="button" className="panel-btn-sm primary" onClick={() => apply(row.maid_id)}>
-                        Apply / Book
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {rows.length === 0 && <tr><td colSpan={5} className="panel-empty">No approved maid listing found.</td></tr>}
-            </tbody>
-          </table>
-                  <td>
                     {!isSubscribed ? (
                       <button type="button" className="panel-btn-sm" style={{ background: '#ccc', color: '#888', cursor: 'not-allowed', opacity: 0.7 }} disabled>
                         Locked
@@ -143,3 +126,13 @@ export default function StudentMaidsPage() {
                       </button>
                     )}
                   </td>
+                </tr>
+              ))}
+              {rows.length === 0 && <tr><td colSpan={5} className="panel-empty">No approved maid listing found.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -16,8 +16,7 @@ export default function StudentHouseRentPage() {
     } catch {
       setRows([]);
     }
-    
-    // Fetch subscription status
+
     try {
       const { data } = await api.get('/api/student/dashboard');
       setIsSubscribed(data?.isSubscribed || false);
@@ -48,8 +47,8 @@ export default function StudentHouseRentPage() {
   return (
     <div className="panel-page">
       <PopupMessage message={popup.message} show={popup.show} onClose={() => setPopup({ ...popup, show: false })} />
-      <SubscriptionModal 
-        show={showSubscriptionModal} 
+      <SubscriptionModal
+        show={showSubscriptionModal}
         onClose={() => setShowSubscriptionModal(false)}
         onSuccess={() => {
           setShowSubscriptionModal(false);
@@ -96,27 +95,16 @@ export default function StudentHouseRentPage() {
       <div className="panel-block">
         <div className="panel-table-wrap">
           <table className="table-modern">
-            <thead><tr><th>Location</th><th>Rent</th><th>Rooms</th><th>Status</th><th /></tr></thead>
+            <thead>
+              <tr><th>Location</th><th>Rent</th><th>Rooms</th><th>Status</th><th /></tr>
+            </thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.house_id}>
-                  <td>{r.location}</td><td>{r.rent}</td><td>{r.rooms}</td><td>{r.status}</td>
-                  <td>
-                    {r.userApplicationStatus && (String(r.userApplicationStatus).toLowerCase() === 'pending' || String(r.userApplicationStatus).toLowerCase() === 'applied') ? (
-                      <button type="button" className="panel-btn-sm" style={{ background: '#ccc', color: '#888', cursor: 'not-allowed', opacity: 0.7 }} disabled>
-                        Applied
-                      </button>
-                    ) : (
-                      <button type="button" className="panel-btn-sm primary" onClick={() => contact(r.house_id)}>
-                        Apply / Book
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {rows.length === 0 && <tr><td colSpan={5} className="panel-empty">No approved house listings.</td></tr>}
-            </tbody>
-          </table>
+                  <td>{r.location}</td>
+                  <td>{r.rent}</td>
+                  <td>{r.rooms}</td>
+                  <td>{r.status}</td>
                   <td>
                     {!isSubscribed ? (
                       <button type="button" className="panel-btn-sm" style={{ background: '#ccc', color: '#888', cursor: 'not-allowed', opacity: 0.7 }} disabled>
@@ -132,3 +120,13 @@ export default function StudentHouseRentPage() {
                       </button>
                     )}
                   </td>
+                </tr>
+              ))}
+              {rows.length === 0 && <tr><td colSpan={5} className="panel-empty">No approved house listings.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}

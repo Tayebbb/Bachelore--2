@@ -16,8 +16,7 @@ export default function StudentTuitionPage() {
     } catch {
       setRows([]);
     }
-    
-    // Fetch subscription status
+
     try {
       const { data } = await api.get('/api/student/dashboard');
       setIsSubscribed(data?.isSubscribed || false);
@@ -48,8 +47,8 @@ export default function StudentTuitionPage() {
   return (
     <div className="panel-page">
       <PopupMessage message={popup.message} show={popup.show} onClose={() => setPopup({ ...popup, show: false })} />
-      <SubscriptionModal 
-        show={showSubscriptionModal} 
+      <SubscriptionModal
+        show={showSubscriptionModal}
         onClose={() => setShowSubscriptionModal(false)}
         onSuccess={() => {
           setShowSubscriptionModal(false);
@@ -95,56 +94,50 @@ export default function StudentTuitionPage() {
       )}
 
       <div className="panel-block">
-          <div className="panel-table-wrap">
-            <table className="table-modern">
-              <thead>
-                <tr>
-                  <th>Subject</th>
-                  <th>Salary</th>
-                  <th>Location</th>
-                  <th>Status</th>
-                  <th />
+        <div className="panel-table-wrap">
+          <table className="table-modern">
+            <thead>
+              <tr>
+                <th>Subject</th>
+                <th>Salary</th>
+                <th>Location</th>
+                <th>Status</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.tuition_id}>
+                  <td>{row.subject}</td>
+                  <td>{Number(row.salary || 0).toLocaleString()}</td>
+                  <td>{row.location}</td>
+                  <td>{row.status}</td>
+                  <td>
+                    {!isSubscribed ? (
+                      <button type="button" className="panel-btn-sm" style={{ background: '#ccc', color: '#888', cursor: 'not-allowed', opacity: 0.7 }} disabled>
+                        Locked
+                      </button>
+                    ) : row.userApplicationStatus && (String(row.userApplicationStatus).toLowerCase() === 'pending' || String(row.userApplicationStatus).toLowerCase() === 'applied') ? (
+                      <button type="button" className="panel-btn-sm" style={{ background: '#ccc', color: '#888', cursor: 'not-allowed', opacity: 0.7 }} disabled>
+                        Applied
+                      </button>
+                    ) : (
+                      <button type="button" className="panel-btn-sm primary" onClick={() => apply(row.tuition_id)}>
+                        Apply / Book
+                      </button>
+                    )}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.tuition_id}>
-                    <td>{row.subject}</td>
-                    <td>{Number(row.salary || 0).toLocaleString()}</td>
-                    <td>{row.location}</td>
-                    <td>{row.status}</td>
-                    <td>
-                      {row.userApplicationStatus && (String(row.userApplicationStatus).toLowerCase() === 'pending' || String(row.userApplicationStatus).toLowerCase() === 'applied') ? (
-                        <button type="button" className="panel-btn-sm" style={{ background: '#ccc', color: '#888', cursor: 'not-allowed', opacity: 0.7 }} disabled>
-                          Applied
-                        </button>
-                      ) : (
-                        <button type="button" className="panel-btn-sm primary" onClick={() => apply(row.tuition_id)}>
-                          Apply / Book
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-                {rows.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="panel-empty">No approved tuition listings available.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-                    <td>
-                      {!isSubscribed ? (
-                        <button type="button" className="panel-btn-sm" style={{ background: '#ccc', color: '#888', cursor: 'not-allowed', opacity: 0.7 }} disabled>
-                          Locked
-                        </button>
-                      ) : row.userApplicationStatus && (String(row.userApplicationStatus).toLowerCase() === 'pending' || String(row.userApplicationStatus).toLowerCase() === 'applied') ? (
-                        <button type="button" className="panel-btn-sm" style={{ background: '#ccc', color: '#888', cursor: 'not-allowed', opacity: 0.7 }} disabled>
-                          Applied
-                        </button>
-                      ) : (
-                        <button type="button" className="panel-btn-sm primary" onClick={() => apply(row.tuition_id)}>
-                          Apply / Book
-                        </button>
-                      )}
-                    </td>
+              ))}
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="panel-empty">No approved tuition listings available.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}

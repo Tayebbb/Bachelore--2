@@ -12,6 +12,7 @@ import StudentLayout from '../components/student/StudentLayout.jsx'
 import AdminDashboardPage from '../pages/admin/AdminDashboardPage.jsx'
 import AdminUsersPage from '../pages/admin/AdminUsersPage.jsx'
 import AdminListingsPage from '../pages/admin/AdminListingsPage.jsx'
+import AdminPaymentsPage from '../pages/admin/AdminPaymentsPage.jsx'
 import StudentDashboardPage from '../pages/student/StudentDashboardPage.jsx'
 import StudentTuitionPage from '../pages/student/StudentTuitionPage.jsx'
 import StudentMaidsPage from '../pages/student/StudentMaidsPage.jsx'
@@ -38,6 +39,7 @@ export default function Router(){
     '/admin/dashboard',
     '/admin/users',
     '/admin/listings',
+    '/admin/payments',
   ])
 
   const StudentRoute = ({ children }) => {
@@ -103,6 +105,7 @@ export default function Router(){
             <Route path="dashboard" element={<AdminDashboardPage />} />
             <Route path="users" element={<AdminUsersPage />} />
             <Route path="listings" element={<AdminListingsPage />} />
+            <Route path="payments" element={<AdminPaymentsPage />} />
             <Route index element={<Navigate to="/admin/dashboard" replace />} />
           </Route>
 

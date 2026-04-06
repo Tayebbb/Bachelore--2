@@ -6,6 +6,7 @@ const adminMenu = [
   { to: '/admin/dashboard', label: 'Overview', icon: 'bi-speedometer2' },
   { to: '/admin/users', label: 'Users', icon: 'bi-people' },
   { to: '/admin/listings', label: 'Listing Review', icon: 'bi-patch-check' },
+  { to: '/admin/payments', label: 'Payments', icon: 'bi-credit-card-2-front' },
 ];
 
 export default function AdminLayout() {

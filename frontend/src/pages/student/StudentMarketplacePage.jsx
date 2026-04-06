@@ -17,8 +17,7 @@ export default function StudentMarketplacePage() {
     } catch {
       setRows([]);
     }
-    
-    // Fetch subscription status
+
     try {
       const { data } = await api.get('/api/student/dashboard');
       setIsSubscribed(data?.isSubscribed || false);
@@ -65,8 +64,8 @@ export default function StudentMarketplacePage() {
   return (
     <div className="panel-page">
       <PopupMessage message={popup.message} show={popup.show} onClose={() => setPopup({ ...popup, show: false })} />
-      <SubscriptionModal 
-        show={showSubscriptionModal} 
+      <SubscriptionModal
+        show={showSubscriptionModal}
         onClose={() => setShowSubscriptionModal(false)}
         onSuccess={() => {
           setShowSubscriptionModal(false);
@@ -113,17 +112,19 @@ export default function StudentMarketplacePage() {
       <div className="panel-split panel-split-4-8">
         <div>
           <div className="panel-block">
-              <h5 className="panel-block-title">Post Item</h5>
-              <form onSubmit={postItem} className="panel-form">
-                <input className="app-input" placeholder="Title" value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} disabled={!isSubscribed} />
-                <input className="app-input" placeholder="Price" value={form.price} onChange={(e) => setForm((p) => ({ ...p, price: e.target.value }))} disabled={!isSubscribed} />
-                <select className="app-select" value={form.condition} onChange={(e) => setForm((p) => ({ ...p, condition: e.target.value }))} disabled={!isSubscribed}>
-                  <option value="used">Used</option>
-                  <option value="good">Good</option>
-                  <option value="new">New</option>
-                </select>
-                <button type="submit" className="btn-primary" disabled={!isSubscribed} style={{ opacity: isSubscribed ? 1 : 0.5, cursor: isSubscribed ? 'pointer' : 'not-allowed' }}>Post</button>
-              </form>
+            <h5 className="panel-block-title">Post Item</h5>
+            <form onSubmit={postItem} className="panel-form">
+              <input className="app-input" placeholder="Title" value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} disabled={!isSubscribed} />
+              <input className="app-input" placeholder="Price" value={form.price} onChange={(e) => setForm((p) => ({ ...p, price: e.target.value }))} disabled={!isSubscribed} />
+              <select className="app-select" value={form.condition} onChange={(e) => setForm((p) => ({ ...p, condition: e.target.value }))} disabled={!isSubscribed}>
+                <option value="used">Used</option>
+                <option value="good">Good</option>
+                <option value="new">New</option>
+              </select>
+              <button type="submit" className="btn-primary" disabled={!isSubscribed} style={{ opacity: isSubscribed ? 1 : 0.5, cursor: isSubscribed ? 'pointer' : 'not-allowed' }}>
+                Post
+              </button>
+            </form>
           </div>
         </div>
         <div>
@@ -135,22 +136,6 @@ export default function StudentMarketplacePage() {
                   {rows.map((r) => (
                     <tr key={r.item_id}>
                       <td>{r.title}</td><td>{r.price}</td><td>{r.condition}</td><td>{r.status}</td>
-                      <td>
-                        {r.userApplicationStatus && (String(r.userApplicationStatus).toLowerCase() === 'pending' || String(r.userApplicationStatus).toLowerCase() === 'applied') ? (
-                          <button type="button" className="panel-btn-sm" style={{ background: '#ccc', color: '#888', cursor: 'not-allowed', opacity: 0.7 }} disabled>
-                            Applied
-                          </button>
-                        ) : (
-                          <button type="button" className="panel-btn-sm success" onClick={() => buy(r.item_id)}>
-                            Apply / Book
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                  {rows.length === 0 && <tr><td colSpan={5} className="panel-empty">No marketplace data.</td></tr>}
-                </tbody>
-              </table>
                       <td>
                         {!isSubscribed ? (
                           <button type="button" className="panel-btn-sm" style={{ background: '#ccc', color: '#888', cursor: 'not-allowed', opacity: 0.7 }} disabled>
@@ -166,3 +151,15 @@ export default function StudentMarketplacePage() {
                           </button>
                         )}
                       </td>
+                    </tr>
+                  ))}
+                  {rows.length === 0 && <tr><td colSpan={5} className="panel-empty">No marketplace data.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

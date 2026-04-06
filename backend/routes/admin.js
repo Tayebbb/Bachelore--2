@@ -482,12 +482,29 @@ router.get('/payments', async (_req, res) => {
 				u.email,
 				sp.amount,
 				sp.status,
-				sp.payment_date
+				sp.payment_date,
+				sp.payment_ref
 			FROM dbo.SUBSCRIPTIONPAYMENTS sp
 			LEFT JOIN dbo.USERS u ON u.user_id = sp.user_id
 			ORDER BY sp.payment_date DESC;
 		`);
-		return res.json(result.recordset);
+		const rows = (result.recordset || []).map((row) => {
+			const refText = String(row.payment_ref || '');
+			const parts = refText.split('|').reduce((acc, part) => {
+				const [k, ...rest] = part.split(':');
+				if (!k || rest.length === 0) return acc;
+				acc[k.trim().toUpperCase()] = rest.join(':').trim();
+				return acc;
+			}, {});
+
+			return {
+				...row,
+				bkash_number: parts.BKASH || null,
+				transaction_reference: parts.REF || row.payment_ref || null,
+			};
+		});
+
+		return res.json(rows);
 	} catch (error) {
 		return res.status(500).json({ msg: 'Failed to load payments', error: String(error.message || error) });
 	}
