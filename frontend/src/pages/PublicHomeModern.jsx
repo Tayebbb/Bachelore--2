@@ -56,30 +56,6 @@ function FeatureCard({ icon, title, description, delay = 0 }) {
   );
 }
 
-// Stepper Component
-function Stepper() {
-  const steps = [
-    { icon: 'bi-cloud-upload', label: 'Upload' },
-    { icon: 'bi-gear', label: 'Analyze' },
-    { icon: 'bi-rocket-takeoff', label: 'Deploy' },
-  ];
-
-  return (
-    <div className="hero-stepper">
-      {steps.map((step, index) => (
-        <React.Fragment key={step.label}>
-          <div className="stepper-step">
-            <span className="step-icon">
-              <i className={`bi ${step.icon}`} />
-            </span>
-            <span>{step.label}</span>
-          </div>
-          {index < steps.length - 1 && <div className="stepper-connector" />}
-        </React.Fragment>
-      ))}
-    </div>
-  );
-}
 
 // FAQ Accordion Item
 function AccordionItem({ question, answer, isOpen, onClick }) {
@@ -281,14 +257,6 @@ export default function PublicHomeModern() {
             </Link>
           </motion.div>
 
-          {/* Stepper */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.6, delay: 0.4 }}
-          >
-            <Stepper />
-          </motion.div>
         </div>
 
         {/* Scroll indicator */}
@@ -353,23 +321,17 @@ export default function PublicHomeModern() {
             className="surface-card"
             style={{
               background: 'linear-gradient(135deg, var(--bg-elevated) 0%, var(--bg-surface) 100%)',
+              padding: '40px 0',
             }}
           >
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                gap: 48,
-                textAlign: 'center',
-              }}
-            >
+            <div className="stats-row">
               {[
                 { value: '10K+', label: 'Active Users' },
                 { value: '50+', label: 'Cities Covered' },
                 { value: '99%', label: 'Satisfaction Rate' },
                 { value: '24/7', label: 'Support Available' },
               ].map((stat) => (
-                <div key={stat.label}>
+                <div key={stat.label} className="stat-col">
                   <div
                     style={{
                       fontFamily: 'var(--font-display)',

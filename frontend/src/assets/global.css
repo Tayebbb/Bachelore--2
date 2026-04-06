@@ -1,3 +1,31 @@
+/* Stats Row - Horizontal on desktop, stacked on mobile */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 48px;
+  text-align: center;
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+}
+.stat-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+@media (max-width: 900px) {
+  .stats-row {
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+  }
+}
+@media (max-width: 600px) {
+  .stats-row {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+}
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Syne:wght@400;500;600;700;800&display=swap');
 
 /* ============================================================================
@@ -572,39 +600,6 @@ p {
   margin-bottom: 48px;
 }
 
-/* Micro-flow stepper */
-.hero-stepper {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  margin-top: 64px;
-}
-
-.stepper-step {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.875rem;
-  color: var(--fg-muted);
-}
-
-.stepper-step .step-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  display: grid;
-  place-items: center;
-  font-size: 0.875rem;
-}
-
-.stepper-connector {
-  width: 40px;
-  height: 1px;
-  background: var(--border);
-}
 
 /* ============================================================================
    BUTTONS - Primary solid + Ghost secondary pairing
@@ -668,12 +663,6 @@ p {
    ============================================================================ */
 
 .surface-card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 28px;
-  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
-}
   /* Glassmorphism base, theme-aware */
   background: rgba(255, 255, 255, 0.22);
   border: 1.5px solid rgba(255,255,255,0.35);
@@ -1273,6 +1262,10 @@ p {
   line-height: 1.8;
   font-size: 1.01rem;
   margin: 0;
+}
+[data-theme='dark'] .faq-accordion-content p {
+  color: #e6e6ea;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.18);
 }
 
 .accordion-item.open .accordion-content {
