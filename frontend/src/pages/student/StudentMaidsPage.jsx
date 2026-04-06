@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../components/axios.jsx';
 import PopupMessage from '../../components/PopupMessage.jsx';
-import SubscriptionModal from '../../components/SubscriptionModal.jsx';
+import { useNavigate } from 'react-router-dom';
 
 export default function StudentMaidsPage() {
   const [rows, setRows] = useState([]);
   const [popup, setPopup] = useState({ show: false, message: '' });
   const [isSubscribed, setIsSubscribed] = useState(false);
-  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+  const navigate = useNavigate();
 
   const load = async () => {
     try {
@@ -47,14 +47,7 @@ export default function StudentMaidsPage() {
   return (
     <div className="panel-page">
       <PopupMessage message={popup.message} show={popup.show} onClose={() => setPopup({ ...popup, show: false })} />
-      <SubscriptionModal
-        show={showSubscriptionModal}
-        onClose={() => setShowSubscriptionModal(false)}
-        onSuccess={() => {
-          setShowSubscriptionModal(false);
-          load();
-        }}
-      />
+      {/* Subscription modal removed, replaced with navigation to /subscribe */}
       <header className="panel-page-header">
         <h2 className="panel-page-title">Maid Services</h2>
         <p className="panel-page-subtitle">Find approved maid listings and apply instantly.</p>
@@ -74,7 +67,7 @@ export default function StudentMaidsPage() {
               <p style={{ margin: '4px 0 0 0', fontSize: '0.95em' }}>Subscribe to apply for maids.</p>
             </div>
             <button
-              onClick={() => setShowSubscriptionModal(true)}
+              onClick={() => navigate('/subscribe')}
               style={{
                 padding: '8px 16px',
                 backgroundColor: '#dc3545',

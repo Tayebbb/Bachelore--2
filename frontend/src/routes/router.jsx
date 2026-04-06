@@ -21,6 +21,8 @@ import StudentHouseRentPage from '../pages/student/StudentHouseRentPage.jsx'
 import StudentMarketplacePage from '../pages/student/StudentMarketplacePage.jsx'
 import StudentActivitiesPage from '../pages/student/StudentActivitiesPage.jsx'
 import StudentProfilePage from '../pages/student/StudentProfilePage.jsx'
+
+import SubscriptionPage from '../pages/SubscriptionPage.jsx'
 import NotFound from '../pages/NotFound.jsx'
 
 import { isAdminAuthed, isStudentAuthed, onAuthChange, offAuthChange } from '../lib/auth'
@@ -69,6 +71,7 @@ export default function Router(){
       {!hideGlobalNavbar && <Navbar />}
       <div className="app-content">
         <Routes>
+                    <Route path="/subscribe" element={<SubscriptionPage />} />
           <Route path="/" element={<PublicHome />} />
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
