@@ -15,6 +15,7 @@ IF OBJECT_ID('dbo.MAIDS', 'U') IS NOT NULL DROP TABLE dbo.MAIDS;
 IF OBJECT_ID('dbo.TUITIONS', 'U') IS NOT NULL DROP TABLE dbo.TUITIONS;
 IF OBJECT_ID('dbo.USERACTIVITIES', 'U') IS NOT NULL DROP TABLE dbo.USERACTIVITIES;
 IF OBJECT_ID('dbo.SUBSCRIPTIONPAYMENTS', 'U') IS NOT NULL DROP TABLE dbo.SUBSCRIPTIONPAYMENTS;
+IF OBJECT_ID('dbo.ANNOUNCEMENTREQUESTS', 'U') IS NOT NULL DROP TABLE dbo.ANNOUNCEMENTREQUESTS;
 IF OBJECT_ID('dbo.ANNOUNCEMENTS', 'U') IS NOT NULL DROP TABLE dbo.ANNOUNCEMENTS;
 IF OBJECT_ID('dbo.USERS', 'U') IS NOT NULL DROP TABLE dbo.USERS;
 
@@ -34,6 +35,17 @@ CREATE TABLE dbo.ANNOUNCEMENTS (
   created_by UNIQUEIDENTIFIER NOT NULL,
   created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
   CONSTRAINT FK_ANNOUNCEMENTS_USERS FOREIGN KEY (created_by) REFERENCES dbo.USERS(user_id)
+);
+
+CREATE TABLE dbo.ANNOUNCEMENTREQUESTS (
+  request_id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT NEWID(),
+  announcement_id UNIQUEIDENTIFIER NOT NULL,
+  user_id UNIQUEIDENTIFIER NOT NULL,
+  status NVARCHAR(30) NOT NULL DEFAULT 'pending',
+  requested_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+  CONSTRAINT FK_ANNOUNCEMENTREQUESTS_ANNOUNCEMENTS FOREIGN KEY (announcement_id) REFERENCES dbo.ANNOUNCEMENTS(announcement_id) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT FK_ANNOUNCEMENTREQUESTS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT CK_ANNOUNCEMENTREQUESTS_STATUS_BASE CHECK (LOWER(status) IN ('pending', 'approved', 'rejected'))
 );
 
 CREATE TABLE dbo.SUBSCRIPTIONPAYMENTS (
@@ -213,6 +225,11 @@ END;
 IF COL_LENGTH('dbo.SUBSCRIPTIONPAYMENTS', 'payment_ref') IS NULL
 BEGIN
   ALTER TABLE dbo.SUBSCRIPTIONPAYMENTS ADD payment_ref NVARCHAR(50) NULL;
+END;
+
+IF COL_LENGTH('dbo.SUBSCRIPTIONPAYMENTS', 'verified') IS NULL
+BEGIN
+  ALTER TABLE dbo.SUBSCRIPTIONPAYMENTS ADD verified BIT NOT NULL CONSTRAINT DF_SUBSCRIPTIONPAYMENTS_VERIFIED DEFAULT (0);
 END;
 
 IF COL_LENGTH('dbo.USERACTIVITIES', 'activity_description') IS NULL
@@ -477,7 +494,7 @@ BEGIN
   SET NOCOUNT ON;
   SET XACT_ABORT ON;
 
-  DECLARE @status NVARCHAR(30) = CASE WHEN LOWER(@decision) = ''approved'' THEN ''Approved'' ELSE ''Rejected'' END;
+  DECLARE @status NVARCHAR(30) = CASE WHEN LOWER(@decision) = ''approved'' THEN ''approved'' ELSE ''rejected'' END;
 
   BEGIN TRY
     BEGIN TRANSACTION;
@@ -495,8 +512,11 @@ BEGIN
     ELSE
       THROW 50010, ''Unsupported listing type'', 1;
 
-    INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id)
-    VALUES (@admin_user_id, CONCAT(''admin_review_'', LOWER(@listing_type), ''_'', LOWER(@decision)), ''LISTING_REVIEW'', @listing_id);
+    IF @admin_user_id IS NOT NULL
+    BEGIN
+      INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id)
+      VALUES (@admin_user_id, CONCAT(''admin_review_'', LOWER(@listing_type), ''_'', LOWER(@decision)), ''LISTING_REVIEW'', @listing_id);
+    END;
 
     COMMIT TRANSACTION;
   END TRY
@@ -625,7 +645,7 @@ BEGIN
   SET NOCOUNT ON;
   SET XACT_ABORT ON;
 
-  DECLARE @status NVARCHAR(30) = CASE WHEN LOWER(@decision) = ''approved'' THEN ''Approved'' ELSE ''Rejected'' END;
+  DECLARE @status NVARCHAR(30) = CASE WHEN LOWER(@decision) = ''approved'' THEN ''approved'' ELSE ''rejected'' END;
   DECLARE @target_user_id UNIQUEIDENTIFIER = NULL;
   DECLARE @rows INT = 0;
   CREATE TABLE #tmp_owner (user_id UNIQUEIDENTIFIER);
@@ -681,10 +701,17 @@ BEGIN
     IF @rows = 0
       THROW 50011, ''Listing not found'', 1;
 
-    INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id, activity_description)
-    VALUES
-      (@admin_user_id, CONCAT(''admin_review_'', LOWER(@listing_type), ''_'', LOWER(@decision)), ''LISTING_REVIEW'', @listing_id, CONCAT(''Admin decision: '', @status)),
-      (@target_user_id, CONCAT(''listing_'', LOWER(@decision)), UPPER(@listing_type), @listing_id, CONCAT(''Your listing was '', @status));
+    IF @admin_user_id IS NOT NULL
+    BEGIN
+      INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id, activity_description)
+      VALUES (@admin_user_id, CONCAT(''admin_review_'', LOWER(@listing_type), ''_'', LOWER(@decision)), ''LISTING_REVIEW'', @listing_id, CONCAT(''Admin decision: '', @status));
+    END;
+
+    IF @target_user_id IS NOT NULL
+    BEGIN
+      INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id, activity_description)
+      VALUES (@target_user_id, CONCAT(''listing_'', LOWER(@decision)), UPPER(@listing_type), @listing_id, CONCAT(''Your listing was '', @status));
+    END;
 
     COMMIT TRANSACTION;
 
@@ -1177,6 +1204,154 @@ export async function ensureSchema() {
       VALUES ('System Admin', 'admin@bachelore.local', '$2a$10$m42Hi9dSi8NQ5ec7QcHBOecVaHPfKja4h74QE8XABdUB7jzQx8jYu', 'admin')
     `);
   }
+
+  await pool.request().query(`
+    IF EXISTS (
+      SELECT 1
+      FROM dbo.USERS
+      WHERE LOWER(email) = 'jk@aust.edu'
+    )
+    BEGIN
+      UPDATE dbo.USERS
+      SET role = 'admin'
+      WHERE LOWER(email) = 'jk@aust.edu';
+    END;
+  `);
+
+  // Non-destructive bootstrap for partially-initialized databases where USERS exists
+  // but feature tables are missing or have legacy structures. Keep this minimal
+  // (no strict FKs) so startup remains resilient across old schemas.
+  await pool.request().query(`
+IF OBJECT_ID('dbo.TUITIONS', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.TUITIONS (
+    tuition_id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT NEWID(),
+    user_id UNIQUEIDENTIFIER NULL,
+    subject NVARCHAR(140) NULL,
+    salary DECIMAL(10, 2) NULL,
+    location NVARCHAR(160) NULL,
+    status NVARCHAR(30) NOT NULL DEFAULT 'open',
+    created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+  );
+END;
+
+IF OBJECT_ID('dbo.MAIDS', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.MAIDS (
+    maid_id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT NEWID(),
+    user_id UNIQUEIDENTIFIER NULL,
+    salary DECIMAL(10, 2) NULL,
+    location NVARCHAR(160) NULL,
+    availability NVARCHAR(40) NULL,
+    status NVARCHAR(30) NOT NULL DEFAULT 'Pending',
+    created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+  );
+END;
+
+IF OBJECT_ID('dbo.ROOMMATELISTINGS', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.ROOMMATELISTINGS (
+    listing_id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT NEWID(),
+    user_id UNIQUEIDENTIFIER NULL,
+    location NVARCHAR(160) NULL,
+    rent DECIMAL(10, 2) NULL,
+    preference NVARCHAR(MAX) NULL,
+    [type] NVARCHAR(20) NOT NULL DEFAULT 'host',
+    status NVARCHAR(30) NOT NULL DEFAULT 'Pending',
+    created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+  );
+END;
+
+IF OBJECT_ID('dbo.HOUSERENTLISTINGS', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.HOUSERENTLISTINGS (
+    house_id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT NEWID(),
+    user_id UNIQUEIDENTIFIER NULL,
+    location NVARCHAR(160) NULL,
+    rent DECIMAL(10, 2) NULL,
+    rooms INT NULL,
+    description NVARCHAR(MAX) NULL,
+    status NVARCHAR(30) NOT NULL DEFAULT 'Pending',
+    created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+  );
+END;
+
+IF OBJECT_ID('dbo.MARKETPLACELISTINGS', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.MARKETPLACELISTINGS (
+    item_id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT NEWID(),
+    user_id UNIQUEIDENTIFIER NULL,
+    title NVARCHAR(160) NULL,
+    price DECIMAL(10, 2) NULL,
+    [condition] NVARCHAR(40) NULL,
+    status NVARCHAR(30) NOT NULL DEFAULT 'available',
+    created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+  );
+END;
+
+IF OBJECT_ID('dbo.APPLIEDTUITIONS', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.APPLIEDTUITIONS (
+    application_id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT NEWID(),
+    tuition_id UNIQUEIDENTIFIER NULL,
+    user_id UNIQUEIDENTIFIER NULL,
+    status NVARCHAR(30) NOT NULL DEFAULT 'pending',
+    applied_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+  );
+END;
+
+IF OBJECT_ID('dbo.APPLIEDMAIDS', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.APPLIEDMAIDS (
+    application_id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT NEWID(),
+    maid_id UNIQUEIDENTIFIER NULL,
+    user_id UNIQUEIDENTIFIER NULL,
+    status NVARCHAR(30) NOT NULL DEFAULT 'pending',
+    applied_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+  );
+END;
+
+IF OBJECT_ID('dbo.APPLIEDROOMMATES', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.APPLIEDROOMMATES (
+    application_id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT NEWID(),
+    listing_id UNIQUEIDENTIFIER NULL,
+    user_id UNIQUEIDENTIFIER NULL,
+    status NVARCHAR(30) NOT NULL DEFAULT 'pending',
+    applied_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+  );
+END;
+
+IF OBJECT_ID('dbo.BOOKEDTUITIONS', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.BOOKEDTUITIONS (
+    booking_id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT NEWID(),
+    application_id UNIQUEIDENTIFIER NULL,
+    booking_status NVARCHAR(20) NOT NULL DEFAULT 'confirmed',
+    confirmed_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+  );
+END;
+
+IF OBJECT_ID('dbo.BOOKEDMAIDS', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.BOOKEDMAIDS (
+    booking_id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT NEWID(),
+    application_id UNIQUEIDENTIFIER NULL,
+    booking_status NVARCHAR(20) NOT NULL DEFAULT 'confirmed',
+    confirmed_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+  );
+END;
+
+IF OBJECT_ID('dbo.BOOKEDROOMMATES', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.BOOKEDROOMMATES (
+    booking_id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT NEWID(),
+    application_id UNIQUEIDENTIFIER NULL,
+    booking_status NVARCHAR(20) NOT NULL DEFAULT 'confirmed',
+    confirmed_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+  );
+END;
+  `);
 
   const strictSchemaEnhancement = String(process.env.STRICT_SCHEMA_ENHANCEMENT || 'false').toLowerCase() === 'true';
   const objectPhaseMarker = "IF OBJECT_ID('dbo.vw_admin_dashboard_summary', 'V') IS NOT NULL";

@@ -71,8 +71,13 @@ export async function connectDatabase() {
     await sequelize.authenticate();
     console.log('MSSQL connection established successfully.');
 
-    await sequelize.sync({ alter: false, force: false });
-    console.log('Sequelize models synchronized with MSSQL (no alter, no force).');
+    const shouldSync = String(process.env.DB_SEQUELIZE_SYNC || 'false').toLowerCase() === 'true';
+    if (shouldSync) {
+      await sequelize.sync({ alter: false, force: false });
+      console.log('Sequelize models synchronized with MSSQL (no alter, no force).');
+    } else {
+      console.log('Sequelize model sync skipped (DB_SEQUELIZE_SYNC=false).');
+    }
   } catch (error) {
     console.error('MSSQL connection or sync failed:', {
       message: error?.message,

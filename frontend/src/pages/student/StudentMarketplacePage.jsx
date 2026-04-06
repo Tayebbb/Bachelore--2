@@ -42,8 +42,9 @@ export default function StudentMarketplacePage() {
       setForm({ title: '', price: '', condition: 'used' });
       setPopup({ show: true, message: 'Item posted successfully!' });
       load();
-    } catch {
-      setPopup({ show: true, message: 'Failed to post item.' });
+    } catch (err) {
+      const msg = err?.response?.data?.msg || err?.response?.data?.error || 'Failed to post item.';
+      setPopup({ show: true, message: msg });
     }
   };
 

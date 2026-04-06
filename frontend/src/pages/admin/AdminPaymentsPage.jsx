@@ -5,9 +5,11 @@ export default function AdminPaymentsPage() {
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [actionLoadingId, setActionLoadingId] = useState(null);
+  const [actionMessage, setActionMessage] = useState('');
+  const [actionError, setActionError] = useState('');
 
-  useEffect(() => {
-    const load = async () => {
+  const load = async () => {
       setLoading(true);
       try {
         const { data } = await api.get('/api/admin/payments');
@@ -21,12 +23,53 @@ export default function AdminPaymentsPage() {
         setLoading(false);
       }
     };
+
+  useEffect(() => {
     load();
   }, []);
 
   const totalAmount = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
   const verifiedCount = payments.filter(p => p.status === 'paid').length;
   const pendingCount = payments.filter(p => p.status === 'pending').length;
+
+  const deactivateSubscription = async (payment) => {
+    setActionMessage('');
+    setActionError('');
+
+    const ref = payment.transaction_reference || payment.payment_ref || '-';
+    const ok = window.confirm(`Deactivate this subscription?\nReference: ${ref}`);
+    if (!ok) return;
+
+    setActionLoadingId(payment.payment_id);
+    try {
+      const { data } = await api.post(`/api/admin/payments/${payment.payment_id}/deactivate`);
+      setActionMessage(data?.msg || 'Subscription deactivated successfully.');
+      await load();
+    } catch (err) {
+      setActionError(err?.response?.data?.msg || 'Failed to deactivate this subscription.');
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const verifiedBadge = (payment) => {
+    const isVerified = Number(payment.verified) === 1;
+    if (!isVerified) return null;
+    return (
+      <span
+        style={{
+          backgroundColor: 'rgba(22, 163, 74, 0.18)',
+          color: '#166534',
+          padding: '6px 12px',
+          borderRadius: '4px',
+          fontWeight: 700,
+          fontSize: '0.82em',
+        }}
+      >
+        Verified
+      </span>
+    );
+  };
 
   const formatStatus = (status) => {
     const statusStyles = {
@@ -80,6 +123,12 @@ export default function AdminPaymentsPage() {
       {/* Payments Table */}
       <div className="panel-block">
         <h5 className="panel-block-title">All Payments</h5>
+        {actionMessage && (
+          <p style={{ marginBottom: 12, color: 'var(--success)', fontWeight: 600 }}>{actionMessage}</p>
+        )}
+        {actionError && (
+          <p style={{ marginBottom: 12, color: 'var(--danger)', fontWeight: 600 }}>{actionError}</p>
+        )}
         {loading ? (
           <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
             <p>Loading payment data...</p>
@@ -106,13 +155,14 @@ export default function AdminPaymentsPage() {
                   <th>Reference</th>
                   <th>Amount</th>
                   <th>Status</th>
+                  <th>Verified</th>
                   <th>Date</th>
                 </tr>
               </thead>
               <tbody>
                 {payments.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="panel-empty">No payments found.</td>
+                    <td colSpan={9} className="panel-empty">No payments found.</td>
                   </tr>
                 ) : (
                   payments.map((payment) => (
@@ -142,6 +192,19 @@ export default function AdminPaymentsPage() {
                       </td>
                       <td><strong>৳ {Number(payment.amount || 0).toLocaleString()}</strong></td>
                       <td>{formatStatus(payment.status)}</td>
+                      <td>
+                        <div style={{ display: 'grid', gap: 8 }}>
+                          {verifiedBadge(payment)}
+                          <button
+                            type="button"
+                            className="panel-btn-sm danger"
+                            onClick={() => deactivateSubscription(payment)}
+                            disabled={actionLoadingId === payment.payment_id}
+                          >
+                            {actionLoadingId === payment.payment_id ? 'Deactivating...' : 'Deactivate'}
+                          </button>
+                        </div>
+                      </td>
                       <td>{payment.payment_date ? new Date(payment.payment_date).toLocaleString() : 'N/A'}</td>
                     </tr>
                   ))

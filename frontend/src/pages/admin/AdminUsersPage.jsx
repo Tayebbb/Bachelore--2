@@ -3,6 +3,7 @@ import api from '../../components/axios.jsx';
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState([]);
+  const [actionError, setActionError] = useState('');
 
   const load = async () => {
     try {
@@ -18,14 +19,15 @@ export default function AdminUsersPage() {
   }, []);
 
   const toggleBlock = async (u) => {
+    setActionError('');
     try {
       await api.patch(`/api/admin/users/${u.user_id}/status`, {
         isBlocked: !u.is_blocked,
         blockReason: !u.is_blocked ? 'Blocked by admin' : null,
       });
       load();
-    } catch {
-      // ignore for now
+    } catch (err) {
+      setActionError(err?.response?.data?.msg || 'Failed to update user status.');
     }
   };
 
@@ -35,6 +37,10 @@ export default function AdminUsersPage() {
         <h2 className="panel-page-title">User Management</h2>
         <p className="panel-page-subtitle">Update, block, and monitor all users from database records.</p>
       </header>
+
+      {actionError && (
+        <p style={{ marginBottom: 12, color: 'var(--danger)', fontWeight: 600 }}>{actionError}</p>
+      )}
 
       <div className="panel-block">
           <div className="panel-table-wrap">

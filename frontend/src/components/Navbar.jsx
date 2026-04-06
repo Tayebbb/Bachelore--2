@@ -1,15 +1,20 @@
-import React, { useEffect, useRef, useState } from 'react'
-import { Link, useNavigate, useLocation, NavLink } from 'react-router-dom'
-import { isAuthed, logout as authLogout, onAuthChange, offAuthChange } from '../lib/auth'
+import React, { useEffect, useRef, useState } from "react";
+import { Link, useNavigate, useLocation, NavLink } from "react-router-dom";
+import {
+  isAuthed,
+  logout as authLogout,
+  onAuthChange,
+  offAuthChange,
+} from "../lib/auth";
 
-export default function Navbar(){
-  const navRef = useRef(null)
-  const [authed, setAuthed] = useState(()=> isAuthed())
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [isScrolled, setIsScrolled] = useState(false)
+export default function Navbar() {
+  const navRef = useRef(null);
+  const [authed, setAuthed] = useState(() => isAuthed());
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
   const [theme, setTheme] = useState(() => {
     try {
-      return localStorage.getItem('theme') || 'light'
+      return localStorage.getItem("theme") || "light";
     } catch (_) {
       return "light";
     }
@@ -22,7 +27,7 @@ export default function Navbar(){
     setTheme(nextTheme);
     document.documentElement.setAttribute("data-theme", nextTheme);
     try {
-      localStorage.setItem('theme', nextTheme)
+      localStorage.setItem("theme", nextTheme);
     } catch (_) {}
   };
 
@@ -36,10 +41,10 @@ export default function Navbar(){
     const el = navRef.current;
     if (el) {
       const onScroll = () => {
-        setIsScrolled(window.scrollY > 10)
-      }
-      window.addEventListener('scroll', onScroll, {passive:true})
-      return ()=> window.removeEventListener('scroll', onScroll)
+        setIsScrolled(window.scrollY > 10);
+      };
+      window.addEventListener("scroll", onScroll, { passive: true });
+      return () => window.removeEventListener("scroll", onScroll);
     }
   }, []);
 
@@ -58,25 +63,30 @@ export default function Navbar(){
   }, [theme]);
 
   // Don't show navbar on auth pages
-  if (location.pathname === '/login' || location.pathname === '/signup' || location.pathname === '/admin-login' || location.pathname === '/admin/login') {
-    return null
+  if (
+    location.pathname === "/login" ||
+    location.pathname === "/signup" ||
+    location.pathname === "/admin-login" ||
+    location.pathname === "/admin/login"
+  ) {
+    return null;
   }
 
   const navLinks = [
-    { to: '/home', label: 'Dashboard' },
-    { to: '/roommates', label: 'Roommates' },
-    { to: '/maids', label: 'Maids' },
-    { to: '/tuition', label: 'Tuition' },
-    { to: '/houserent', label: 'House Rent' },
-    { to: '/marketplace', label: 'Marketplace' },
-  ]
+    { to: "/home", label: "Dashboard" },
+    { to: "/roommates", label: "Roommates" },
+    { to: "/maids", label: "Maids" },
+    { to: "/tuition", label: "Tuition" },
+    { to: "/houserent", label: "House Rent" },
+    { to: "/marketplace", label: "Marketplace" },
+  ];
 
   return (
-    <nav ref={navRef} className={`top-nav ${isScrolled ? 'scrolled' : ''}`}>
+    <nav ref={navRef} className={`top-nav ${isScrolled ? "scrolled" : ""}`}>
       <div className="container">
         <div className="nav-inner">
           {/* Brand */}
-          <Link to={isAuthed() ? '/home' : '/'} className="nav-brand">
+          <Link to={isAuthed() ? "/home" : "/"} className="nav-brand">
             <span className="brand-mark">BL</span>
             <span>BacheLORE</span>
           </Link>
@@ -87,7 +97,9 @@ export default function Navbar(){
               <NavLink
                 key={item.to}
                 to={item.to}
-                className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+                className={({ isActive }) =>
+                  `nav-link ${isActive ? "active" : ""}`
+                }
               >
                 {item.label}
               </NavLink>
@@ -101,14 +113,16 @@ export default function Navbar(){
               className="theme-toggle"
               onClick={toggleTheme}
               type="button"
-              aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+              aria-label={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
             >
-              <i className={`bi ${theme === 'light' ? 'bi-moon-stars' : 'bi-sun-fill'}`} />
+              <i
+                className={`bi ${theme === "light" ? "bi-moon-stars" : "bi-sun-fill"}`}
+              />
             </button>
 
             {/* Auth Buttons */}
             <div className="d-none d-sm-flex" style={{ gap: 12 }}>
-              {(!authed || location.pathname === '/') ? (
+              {!authed || location.pathname === "/" ? (
                 <>
                   <Link to="/login" className="btn-ghost">
                     Log in
@@ -126,9 +140,12 @@ export default function Navbar(){
                   <button
                     className="btn-ghost"
                     onClick={handleLogout}
-                    style={{ color: 'var(--danger)' }}
+                    style={{ color: "var(--danger)" }}
                   >
-                    <i className="bi bi-box-arrow-right" style={{ marginRight: 6 }} />
+                    <i
+                      className="bi bi-box-arrow-right"
+                      style={{ marginRight: 6 }}
+                    />
                     Logout
                   </button>
                 </>
@@ -142,7 +159,7 @@ export default function Navbar(){
               type="button"
               aria-label="Toggle menu"
             >
-              <i className={`bi ${menuOpen ? 'bi-x-lg' : 'bi-list'}`} />
+              <i className={`bi ${menuOpen ? "bi-x-lg" : "bi-list"}`} />
             </button>
           </div>
         </div>
@@ -153,10 +170,10 @@ export default function Navbar(){
         <div
           className="d-lg-none"
           style={{
-            background: 'var(--bg-surface)',
-            borderTop: '1px solid var(--border)',
-            padding: '16px 24px',
-            animation: 'slideDown 0.3s ease',
+            background: "var(--bg-surface)",
+            borderTop: "1px solid var(--border)",
+            padding: "16px 24px",
+            animation: "slideDown 0.3s ease",
           }}
         >
           {navLinks.map((item, index) => (
@@ -166,11 +183,14 @@ export default function Navbar(){
               onClick={() => setMenuOpen(false)}
               className={({ isActive }) => `
                 d-flex align-items-center gap-3 py-3
-                ${isActive ? 'text-primary' : 'text-muted'}
+                ${isActive ? "text-primary" : "text-muted"}
               `}
               style={{
-                textDecoration: 'none',
-                borderBottom: index < navLinks.length - 1 ? '1px solid var(--border)' : 'none',
+                textDecoration: "none",
+                borderBottom:
+                  index < navLinks.length - 1
+                    ? "1px solid var(--border)"
+                    : "none",
               }}
             >
               {item.label}
@@ -178,13 +198,21 @@ export default function Navbar(){
           ))}
 
           {/* Mobile Auth Buttons */}
-          <div style={{ marginTop: 16, display: 'flex', gap: 12 }}>
-            {(!authed || location.pathname === '/') ? (
+          <div style={{ marginTop: 16, display: "flex", gap: 12 }}>
+            {!authed || location.pathname === "/" ? (
               <>
-                <Link to="/login" className="btn-ghost flex-1" onClick={() => setMenuOpen(false)}>
+                <Link
+                  to="/login"
+                  className="btn-ghost flex-1"
+                  onClick={() => setMenuOpen(false)}
+                >
                   Log in
                 </Link>
-                <Link to="/signup" className="btn-primary flex-1" onClick={() => setMenuOpen(false)}>
+                <Link
+                  to="/signup"
+                  className="btn-primary flex-1"
+                  onClick={() => setMenuOpen(false)}
+                >
                   Get Started
                 </Link>
               </>
@@ -192,12 +220,15 @@ export default function Navbar(){
               <button
                 className="btn-ghost w-100"
                 onClick={() => {
-                  setMenuOpen(false)
-                  handleLogout()
+                  setMenuOpen(false);
+                  handleLogout();
                 }}
-                style={{ color: 'var(--danger)' }}
+                style={{ color: "var(--danger)" }}
               >
-                <i className="bi bi-box-arrow-right" style={{ marginRight: 6 }} />
+                <i
+                  className="bi bi-box-arrow-right"
+                  style={{ marginRight: 6 }}
+                />
                 Logout
               </button>
             )}
@@ -205,5 +236,5 @@ export default function Navbar(){
         </div>
       )}
     </nav>
-  )
+  );
 }

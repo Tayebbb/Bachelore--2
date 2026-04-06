@@ -5,6 +5,22 @@ import { getAuthUserId, requireAuth, requireRole } from '../utils/auth.js';
 
 const router = express.Router();
 
+async function resolveAdminActorId(req, pool) {
+	const authUserId = getAuthUserId(req);
+	if (authUserId) {
+		return authUserId;
+	}
+
+	const result = await pool.request().query(`
+		SELECT TOP 1 user_id
+		FROM dbo.USERS
+		WHERE LOWER(role) = 'admin'
+		ORDER BY created_at ASC;
+	`);
+
+	return result.recordset?.[0]?.user_id || null;
+}
+
 router.post('/login', adminLogin);
 
 router.use(requireAuth, requireRole('admin'));
@@ -137,7 +153,10 @@ router.patch('/users/:id/status', async (req, res) => {
 				UPDATE dbo.USERS
 				SET is_blocked = @is_blocked,
 						block_reason = CASE WHEN @is_blocked = 1 THEN @block_reason ELSE NULL END
-				OUTPUT INSERTED.user_id, INSERTED.name, INSERTED.email, INSERTED.is_blocked, INSERTED.block_reason
+				WHERE user_id = @user_id;
+
+				SELECT user_id, name, email, is_blocked, block_reason
+				FROM dbo.USERS
 				WHERE user_id = @user_id;
 			`);
 
@@ -245,8 +264,8 @@ router.post('/listings/review', async (req, res) => {
 			return res.status(400).json({ msg: 'listingType, listingId, and decision are required.' });
 		}
 
-		const actorId = getAuthUserId(req);
 		const pool = await getPool();
+		const actorId = await resolveAdminActorId(req, pool);
 
 		try {
 			const reviewRes = await pool
@@ -271,7 +290,7 @@ router.post('/listings/review', async (req, res) => {
 				return res.status(400).json({ msg: 'Unsupported listingType.' });
 			}
 
-			const normalized = String(decision).toLowerCase() === 'approved' ? 'Approved' : 'Rejected';
+			const normalized = String(decision).toLowerCase() === 'approved' ? 'approved' : 'rejected';
 			const result = await pool
 				.request()
 				.input('id', sql.UniqueIdentifier, listingId)
@@ -367,6 +386,7 @@ router.get('/applications', async (_req, res) => {
 			FROM dbo.APPLIEDTUITIONS a
 			INNER JOIN dbo.TUITIONS t ON t.tuition_id = a.tuition_id
 			INNER JOIN dbo.USERS u ON u.user_id = a.user_id
+			WHERE ISNULL(a.status, 'Pending') IN ('pending', 'Pending')
 
 			UNION ALL
 
@@ -384,6 +404,7 @@ router.get('/applications', async (_req, res) => {
 			FROM dbo.APPLIEDMAIDS a
 			INNER JOIN dbo.MAIDS m ON m.maid_id = a.maid_id
 			INNER JOIN dbo.USERS u ON u.user_id = a.user_id
+			WHERE ISNULL(a.status, 'Pending') IN ('pending', 'Pending')
 
 			UNION ALL
 
@@ -401,6 +422,7 @@ router.get('/applications', async (_req, res) => {
 			FROM dbo.APPLIEDROOMMATES a
 			INNER JOIN dbo.ROOMMATELISTINGS r ON r.listing_id = a.listing_id
 			INNER JOIN dbo.USERS u ON u.user_id = a.user_id
+			WHERE ISNULL(a.status, 'Pending') IN ('pending', 'Pending')
 
 			ORDER BY applied_at DESC;
 		`);
@@ -430,35 +452,60 @@ router.post('/applications/:module/:applicationId/review', async (req, res) => {
 		}
 
 		const pool = await getPool();
-		const actorId = getAuthUserId(req);
+		const actorId = await resolveAdminActorId(req, pool);
 		const tx = new sql.Transaction(pool);
 		await tx.begin();
 
 		try {
-			const updated = await createRequest(tx)
-				.input('application_id', sql.UniqueIdentifier, applicationId)
-				.input('status', sql.NVarChar(30), decision)
-				.query(`
-					UPDATE ${target.table}
-					SET status = @status
-					OUTPUT INSERTED.application_id, INSERTED.user_id, INSERTED.status, INSERTED.applied_at
-					WHERE application_id = @application_id;
-				`);
+			const legacyDecision = decision.charAt(0).toUpperCase() + decision.slice(1);
+			const statusCandidates = [decision, legacyDecision];
+			let updated = { recordset: [] };
+			let lastStatusError = null;
+
+			for (const statusCandidate of statusCandidates) {
+				try {
+					updated = await createRequest(tx)
+						.input('application_id', sql.UniqueIdentifier, applicationId)
+						.input('status', sql.NVarChar(30), statusCandidate)
+						.query(`
+							UPDATE ${target.table}
+							SET status = @status
+							WHERE application_id = @application_id;
+
+							SELECT application_id, user_id, status, applied_at
+							FROM ${target.table}
+							WHERE application_id = @application_id;
+						`);
+
+					if (updated.recordset[0]) {
+						lastStatusError = null;
+						break;
+					}
+				} catch (statusError) {
+					lastStatusError = statusError;
+				}
+			}
+
+			if (lastStatusError) {
+				throw lastStatusError;
+			}
 
 			if (!updated.recordset[0]) {
 				await tx.rollback();
 				return res.status(404).json({ msg: 'Application not found.' });
 			}
 
-			await createRequest(tx)
-				.input('user_id', sql.UniqueIdentifier, actorId)
-				.input('action_type', sql.NVarChar(80), `admin_review_${module}_${decision}`)
-				.input('reference_table', sql.NVarChar(80), target.table.replace('dbo.', ''))
-				.input('reference_id', sql.UniqueIdentifier, applicationId)
-				.query(`
-					INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id)
-					VALUES (@user_id, @action_type, @reference_table, @reference_id);
-				`);
+			if (actorId) {
+				await createRequest(tx)
+					.input('user_id', sql.UniqueIdentifier, actorId)
+					.input('action_type', sql.NVarChar(80), `admin_review_${module}_${decision}`)
+					.input('reference_table', sql.NVarChar(80), target.table.replace('dbo.', ''))
+					.input('reference_id', sql.UniqueIdentifier, applicationId)
+					.query(`
+						INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id)
+						VALUES (@user_id, @action_type, @reference_table, @reference_id);
+					`);
+			}
 
 			await tx.commit();
 			return res.json({ msg: 'Application reviewed successfully.', application: updated.recordset[0] });
@@ -482,6 +529,7 @@ router.get('/payments', async (_req, res) => {
 				u.email,
 				sp.amount,
 				sp.status,
+				sp.verified,
 				sp.payment_date,
 				sp.payment_ref
 			FROM dbo.SUBSCRIPTIONPAYMENTS sp
@@ -507,6 +555,75 @@ router.get('/payments', async (_req, res) => {
 		return res.json(rows);
 	} catch (error) {
 		return res.status(500).json({ msg: 'Failed to load payments', error: String(error.message || error) });
+	}
+});
+
+router.post('/payments/:paymentId/deactivate', async (req, res) => {
+	try {
+		const { paymentId } = req.params;
+		const actorId = getAuthUserId(req);
+		const pool = await getPool();
+		const tx = new sql.Transaction(pool);
+		await tx.begin();
+
+		try {
+			const paymentResult = await createRequest(tx)
+				.input('payment_id', sql.UniqueIdentifier, paymentId)
+				.query(`
+					SELECT TOP 1 payment_id, user_id, status, verified, payment_ref
+					FROM dbo.SUBSCRIPTIONPAYMENTS
+					WHERE payment_id = @payment_id;
+				`);
+
+			const payment = paymentResult.recordset[0];
+			if (!payment) {
+				await tx.rollback();
+				return res.status(404).json({ msg: 'Payment not found.' });
+			}
+
+			await createRequest(tx)
+				.input('payment_id', sql.UniqueIdentifier, paymentId)
+				.query(`
+					UPDATE dbo.SUBSCRIPTIONPAYMENTS
+					SET verified = 0,
+						status = CASE WHEN LOWER(status) = 'paid' THEN 'failed' ELSE status END
+					WHERE payment_id = @payment_id;
+				`);
+
+			if (payment.user_id) {
+				await createRequest(tx)
+					.input('user_id', sql.UniqueIdentifier, payment.user_id)
+					.query(`
+						UPDATE dbo.USERS
+						SET subscription_active = 0
+						WHERE user_id = @user_id;
+					`);
+			}
+
+			if (actorId) {
+				await createRequest(tx)
+					.input('user_id', sql.UniqueIdentifier, actorId)
+					.input('action_type', sql.NVarChar(80), 'admin_subscription_deactivated')
+					.input('reference_table', sql.NVarChar(80), 'SUBSCRIPTIONPAYMENTS')
+					.input('reference_id', sql.UniqueIdentifier, paymentId)
+					.query(`
+						INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id)
+						VALUES (@user_id, @action_type, @reference_table, @reference_id);
+					`);
+			}
+
+			await tx.commit();
+			return res.json({
+				msg: 'Subscription deactivated successfully.',
+				payment_id: paymentId,
+				user_id: payment.user_id || null,
+			});
+		} catch (err) {
+			if (tx._aborted !== true) await tx.rollback();
+			throw err;
+		}
+	} catch (error) {
+		return res.status(500).json({ msg: 'Failed to deactivate subscription', error: String(error.message || error) });
 	}
 });
 
@@ -565,8 +682,12 @@ router.post('/announcements', async (req, res) => {
 			.input('created_by', sql.UniqueIdentifier, actorId)
 			.query(`
 				INSERT INTO dbo.ANNOUNCEMENTS (title, message, created_by)
-				OUTPUT INSERTED.*
 				VALUES (@title, @message, @created_by);
+
+				SELECT TOP 1 announcement_id, title, message, created_by, created_at
+				FROM dbo.ANNOUNCEMENTS
+				WHERE title = @title AND created_by = @created_by
+				ORDER BY created_at DESC;
 			`);
 		return res.status(201).json(result.recordset[0]);
 	} catch (error) {
@@ -579,7 +700,8 @@ router.put('/announcements/:id', async (req, res) => {
 		const { id } = req.params;
 		const { title, message } = req.body;
 		const pool = await getPool();
-		const result = await pool
+		
+		await pool
 			.request()
 			.input('id', sql.UniqueIdentifier, id)
 			.input('title', sql.NVarChar(220), title)
@@ -587,9 +709,14 @@ router.put('/announcements/:id', async (req, res) => {
 			.query(`
 				UPDATE dbo.ANNOUNCEMENTS
 				SET title = @title, message = @message
-				OUTPUT INSERTED.*
 				WHERE announcement_id = @id;
 			`);
+
+		// Fetch the updated record
+		const result = await pool
+			.request()
+			.input('id', sql.UniqueIdentifier, id)
+			.query('SELECT TOP 1 announcement_id, title, message, created_by, created_at FROM dbo.ANNOUNCEMENTS WHERE announcement_id = @id;');
 
 		if (!result.recordset[0]) {
 			return res.status(404).json({ msg: 'Announcement not found.' });
@@ -605,17 +732,130 @@ router.delete('/announcements/:id', async (req, res) => {
 	try {
 		const { id } = req.params;
 		const pool = await getPool();
-		const result = await pool
+		
+		// Check if announcement exists first
+		const check = await pool
 			.request()
 			.input('id', sql.UniqueIdentifier, id)
-			.query('DELETE FROM dbo.ANNOUNCEMENTS OUTPUT DELETED.announcement_id WHERE announcement_id = @id;');
+			.query('SELECT announcement_id FROM dbo.ANNOUNCEMENTS WHERE announcement_id = @id;');
 
-		if (!result.recordset[0]) {
+		if (!check.recordset[0]) {
 			return res.status(404).json({ msg: 'Announcement not found.' });
 		}
+
+		// Delete the announcement
+		await pool
+			.request()
+			.input('id', sql.UniqueIdentifier, id)
+			.query('DELETE FROM dbo.ANNOUNCEMENTS WHERE announcement_id = @id;');
+
 		return res.json({ msg: 'Announcement deleted.' });
 	} catch (error) {
 		return res.status(500).json({ msg: 'Failed to delete announcement', error: String(error.message || error) });
+	}
+});
+
+router.get('/announcement-requests', async (_req, res) => {
+	try {
+		const pool = await getPool();
+		const result = await pool.request().query(`
+			SELECT TOP 500
+				ar.request_id,
+				ar.announcement_id,
+				ar.user_id,
+				ar.status,
+				ar.requested_at,
+				a.title AS announcement_title,
+				a.message AS announcement_message,
+				a.created_at AS announcement_created_at,
+				u.name AS requester_name,
+				u.email AS requester_email,
+				au.name AS admin_name
+			FROM dbo.ANNOUNCEMENTREQUESTS ar
+			INNER JOIN dbo.ANNOUNCEMENTS a ON a.announcement_id = ar.announcement_id
+			INNER JOIN dbo.USERS u ON u.user_id = ar.user_id
+			LEFT JOIN dbo.USERS au ON au.user_id = a.created_by
+			WHERE ISNULL(ar.status, 'Pending') IN ('pending', 'Pending')
+			ORDER BY ar.requested_at DESC;
+		`);
+		return res.json(result.recordset);
+	} catch (error) {
+		return res.status(500).json({ msg: 'Failed to load announcement requests', error: String(error.message || error) });
+	}
+});
+
+router.post('/announcement-requests/:requestId/review', async (req, res) => {
+	try {
+		const { requestId } = req.params;
+		const decision = String(req.body.decision || '').toLowerCase();
+		if (!['approved', 'rejected'].includes(decision)) {
+			return res.status(400).json({ msg: 'decision must be approved or rejected.' });
+		}
+
+		const pool = await getPool();
+		const actorId = await resolveAdminActorId(req, pool);
+		const tx = new sql.Transaction(pool);
+		await tx.begin();
+
+		try {
+			const legacyDecision = decision.charAt(0).toUpperCase() + decision.slice(1);
+			const statusCandidates = [decision, legacyDecision];
+			let updated = { recordset: [] };
+			let lastStatusError = null;
+
+			for (const statusCandidate of statusCandidates) {
+				try {
+					updated = await createRequest(tx)
+						.input('request_id', sql.UniqueIdentifier, requestId)
+						.input('status', sql.NVarChar(30), statusCandidate)
+						.query(`
+							UPDATE dbo.ANNOUNCEMENTREQUESTS
+							SET status = @status
+							WHERE request_id = @request_id;
+
+							SELECT request_id, user_id, announcement_id, status, requested_at
+							FROM dbo.ANNOUNCEMENTREQUESTS
+							WHERE request_id = @request_id;
+						`);
+
+					if (updated.recordset[0]) {
+						lastStatusError = null;
+						break;
+					}
+				} catch (statusError) {
+					lastStatusError = statusError;
+				}
+			}
+
+			if (lastStatusError) {
+				throw lastStatusError;
+			}
+
+			if (!updated.recordset[0]) {
+				await tx.rollback();
+				return res.status(404).json({ msg: 'Announcement request not found.' });
+			}
+
+			if (actorId) {
+				await createRequest(tx)
+					.input('user_id', sql.UniqueIdentifier, actorId)
+					.input('action_type', sql.NVarChar(80), `admin_review_announcement_${decision}`)
+					.input('reference_table', sql.NVarChar(80), 'ANNOUNCEMENTREQUESTS')
+					.input('reference_id', sql.UniqueIdentifier, requestId)
+					.query(`
+						INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id)
+						VALUES (@user_id, @action_type, @reference_table, @reference_id);
+					`);
+			}
+
+			await tx.commit();
+			return res.json({ msg: 'Announcement request reviewed successfully.', request: updated.recordset[0] });
+		} catch (err) {
+			if (tx._aborted !== true) await tx.rollback();
+			throw err;
+		}
+	} catch (error) {
+		return res.status(500).json({ msg: 'Failed to review announcement request', error: String(error.message || error) });
 	}
 });
 

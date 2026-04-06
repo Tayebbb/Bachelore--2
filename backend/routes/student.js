@@ -575,22 +575,45 @@ router.post('/marketplace', async (req, res) => {
   try {
     const userId = getAuthUserId(req);
     const { title, price, condition } = req.body;
+    const trimmedTitle = String(title || '').trim();
+    const numericPrice = Number(price || 0);
     const pool = await getPool();
     const subscribed = await hasActiveSubscription(pool, userId);
     if (!subscribed) {
       return res.status(403).json({ msg: 'Subscription required to create listings.' });
     }
 
+    if (!trimmedTitle) {
+      return res.status(400).json({ msg: 'Title is required.' });
+    }
+    if (!Number.isFinite(numericPrice) || numericPrice <= 0) {
+      return res.status(400).json({ msg: 'Price must be greater than 0.' });
+    }
+
     const result = await pool
       .request()
       .input('user_id', sql.UniqueIdentifier, userId)
-      .input('title', sql.NVarChar(160), title)
-      .input('price', sql.Decimal(10, 2), Number(price || 0))
+      .input('title', sql.NVarChar(160), trimmedTitle)
+      .input('price', sql.Decimal(10, 2), numericPrice)
       .input('condition', sql.NVarChar(40), condition || 'used')
       .query(`
+        DECLARE @inserted TABLE (
+          item_id UNIQUEIDENTIFIER,
+          user_id UNIQUEIDENTIFIER,
+          title NVARCHAR(160),
+          price DECIMAL(10, 2),
+          [condition] NVARCHAR(40),
+          status NVARCHAR(30),
+          created_at DATETIME2
+        );
+
         INSERT INTO dbo.MARKETPLACELISTINGS (user_id, title, price, [condition], status)
         OUTPUT INSERTED.item_id, INSERTED.user_id, INSERTED.title, INSERTED.price, INSERTED.[condition], INSERTED.status, INSERTED.created_at
+        INTO @inserted (item_id, user_id, title, price, [condition], status, created_at)
         VALUES (@user_id, @title, @price, @condition, 'pending');
+
+        SELECT item_id, user_id, title, price, [condition], status, created_at
+        FROM @inserted;
       `);
 
     await logActivity(pool, userId, 'created_marketplace_item', 'MARKETPLACELISTINGS', result.recordset[0]?.item_id || null);
@@ -644,10 +667,11 @@ router.post('/subscription/pay', async (req, res) => {
       .input('amount', sql.Decimal(10, 2), amount)
       .input('status', sql.NVarChar(30), 'paid')
       .input('payment_ref', sql.NVarChar(50), paymentRef)
+      .input('verified', sql.Bit, true)
       .query(`
-        INSERT INTO dbo.SUBSCRIPTIONPAYMENTS (user_id, amount, status, payment_ref)
-        OUTPUT INSERTED.payment_id, INSERTED.user_id, INSERTED.amount, INSERTED.status, INSERTED.payment_date
-        VALUES (@user_id, @amount, @status, @payment_ref);
+        INSERT INTO dbo.SUBSCRIPTIONPAYMENTS (user_id, amount, status, payment_ref, verified)
+        OUTPUT INSERTED.payment_id, INSERTED.user_id, INSERTED.amount, INSERTED.status, INSERTED.verified, INSERTED.payment_date
+        VALUES (@user_id, @amount, @status, @payment_ref, @verified);
       `);
 
     const payment = paymentResult.recordset?.[0];
@@ -701,10 +725,11 @@ router.post('/subscription/unsubscribe', async (req, res) => {
       .input('amount', sql.Decimal(10, 2), amount)
       .input('status', sql.NVarChar(30), 'refunded')
       .input('payment_ref', sql.NVarChar(50), 'UNSUBSCRIBED')
+      .input('verified', sql.Bit, false)
       .query(`
-        INSERT INTO dbo.SUBSCRIPTIONPAYMENTS (user_id, amount, status, payment_ref)
+        INSERT INTO dbo.SUBSCRIPTIONPAYMENTS (user_id, amount, status, payment_ref, verified)
         OUTPUT INSERTED.payment_id
-        VALUES (@user_id, @amount, @status, @payment_ref);
+        VALUES (@user_id, @amount, @status, @payment_ref, @verified);
       `);
 
     await pool
@@ -786,6 +811,89 @@ router.get('/activities', async (req, res) => {
   } catch (error) {
     return res.status(500).json({ msg: 'Failed to load personal activity', error: String(error.message || error) });
   }
+});
+
+router.get('/announcements', async (req, res) => {
+	try {
+		const pool = await getPool();
+		const result = await pool.request().query(`
+			SELECT
+				a.announcement_id,
+				a.title,
+				a.message,
+				a.created_at,
+				a.created_by,
+				u.name AS created_by_name
+			FROM dbo.ANNOUNCEMENTS a
+			LEFT JOIN dbo.USERS u ON u.user_id = a.created_by
+			ORDER BY a.created_at DESC;
+		`);
+		return res.json(result.recordset);
+	} catch (error) {
+		return res.status(500).json({ msg: 'Failed to load announcements', error: String(error.message || error) });
+	}
+});
+
+router.post('/announcements/:announcementId/request', async (req, res) => {
+	try {
+		const { announcementId } = req.params;
+		const userId = getAuthUserId(req);
+		const pool = await getPool();
+		const tx = new sql.Transaction(pool);
+		await tx.begin();
+
+		try {
+			// Check if announcement exists
+			const announcementCheck = await createRequest(tx)
+				.input('announcement_id', sql.UniqueIdentifier, announcementId)
+				.query('SELECT announcement_id FROM dbo.ANNOUNCEMENTS WHERE announcement_id = @announcement_id;');
+
+			if (!announcementCheck.recordset[0]) {
+				await tx.rollback();
+				return res.status(404).json({ msg: 'Announcement not found.' });
+			}
+
+			// Check if user already has a pending request for this announcement
+			const existingRequest = await createRequest(tx)
+				.input('announcement_id', sql.UniqueIdentifier, announcementId)
+				.input('user_id', sql.UniqueIdentifier, userId)
+				.query(`
+					SELECT request_id FROM dbo.ANNOUNCEMENTREQUESTS
+					WHERE announcement_id = @announcement_id AND user_id = @user_id AND LOWER(status) = 'pending';
+				`);
+
+			if (existingRequest.recordset[0]) {
+				await tx.rollback();
+				return res.status(400).json({ msg: 'You already have a pending request for this announcement.' });
+			}
+
+			// Create new request
+			const result = await createRequest(tx)
+				.input('announcement_id', sql.UniqueIdentifier, announcementId)
+				.input('user_id', sql.UniqueIdentifier, userId)
+				.input('status', sql.NVarChar(30), 'pending')
+				.query(`
+					INSERT INTO dbo.ANNOUNCEMENTREQUESTS (announcement_id, user_id, status)
+					SELECT @announcement_id, @user_id, @status;
+
+					SELECT request_id, announcement_id, user_id, status, requested_at
+					FROM dbo.ANNOUNCEMENTREQUESTS
+					WHERE user_id = @user_id AND announcement_id = @announcement_id
+					ORDER BY requested_at DESC;
+				`);
+
+			// Log activity
+			await logActivity(tx, userId, 'request_announcement', 'ANNOUNCEMENTREQUESTS', result.recordset[0]?.request_id || null);
+
+			await tx.commit();
+			return res.status(201).json(result.recordset[0]);
+		} catch (err) {
+			if (tx._aborted !== true) await tx.rollback();
+			throw err;
+		}
+	} catch (error) {
+		return res.status(500).json({ msg: 'Failed to create announcement request', error: String(error.message || error) });
+	}
 });
 
 export default router;

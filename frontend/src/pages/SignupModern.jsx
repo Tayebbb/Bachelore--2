@@ -1,23 +1,25 @@
-import React, { useState, useEffect } from 'react';
-import axios from '../components/axios';
-import { Link, useNavigate } from 'react-router-dom';
-import { login as authLogin } from '../lib/auth';
+import React, { useState, useEffect } from "react";
+import axios from "../components/axios";
+import { Link, useNavigate } from "react-router-dom";
+import { login as authLogin } from "../lib/auth";
 
 export default function SignupModern() {
   const navigate = useNavigate();
-  const [theme] = useState(() => localStorage.getItem('theme') || 'light');
+  const [theme] = useState(() => localStorage.getItem("theme") || "light");
   const [step, setStep] = useState(1);
+  const [submitError, setSubmitError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
-    fullName: '',
-    email: '',
-    phone: '',
-    password: '',
-    confirmPassword: '',
+    fullName: "",
+    email: "",
+    phone: "",
+    password: "",
+    confirmPassword: "",
   });
 
   // Sync theme on mount
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
   const handleSubmit = (e) => {
@@ -25,7 +27,7 @@ export default function SignupModern() {
     if (step === 1) {
       setStep(2);
     } else {
-      navigate('/student/dashboard');
+      navigate("/student/dashboard");
     }
   };
 
@@ -33,21 +35,21 @@ export default function SignupModern() {
     <div className="auth-wrap">
       <div className="auth-spotlight" />
 
-      <div className="auth-card reveal" style={{ animationDelay: '0.1s' }}>
+      <div className="auth-card reveal" style={{ animationDelay: "0.1s" }}>
         {/* Header */}
         <div className="auth-card-header">
           <div
             style={{
               width: 48,
               height: 48,
-              borderRadius: 'var(--radius-md)',
-              background: 'var(--accent)',
-              color: 'var(--bg-primary)',
-              display: 'grid',
-              placeItems: 'center',
-              margin: '0 auto 16px',
+              borderRadius: "var(--radius-md)",
+              background: "var(--accent)",
+              color: "var(--bg-primary)",
+              display: "grid",
+              placeItems: "center",
+              margin: "0 auto 16px",
               fontWeight: 800,
-              fontSize: '1.25rem',
+              fontSize: "1.25rem",
             }}
           >
             BL
@@ -61,8 +63,8 @@ export default function SignupModern() {
         {/* Progress Steps */}
         <div
           style={{
-            display: 'flex',
-            alignItems: 'center',
+            display: "flex",
+            alignItems: "center",
             gap: 12,
             marginBottom: 32,
           }}
@@ -73,14 +75,18 @@ export default function SignupModern() {
                 style={{
                   width: 32,
                   height: 32,
-                  borderRadius: '50%',
-                  display: 'grid',
-                  placeItems: 'center',
-                  fontSize: '0.875rem',
+                  borderRadius: "50%",
+                  display: "grid",
+                  placeItems: "center",
+                  fontSize: "0.875rem",
                   fontWeight: 600,
-                  background: step >= s ? 'var(--accent)' : 'var(--bg-elevated)',
-                  color: step >= s ? 'var(--bg-primary)' : 'var(--fg-muted)',
-                  border: step === s ? '2px solid var(--accent)' : `1px solid var(--border)`,
+                  background:
+                    step >= s ? "var(--accent)" : "var(--bg-elevated)",
+                  color: step >= s ? "var(--bg-primary)" : "var(--fg-muted)",
+                  border:
+                    step === s
+                      ? "2px solid var(--accent)"
+                      : `1px solid var(--border)`,
                 }}
               >
                 {step > s ? <i className="bi bi-check" /> : s}
@@ -90,7 +96,7 @@ export default function SignupModern() {
                   style={{
                     flex: 1,
                     height: 2,
-                    background: step > s ? 'var(--accent)' : 'var(--border)',
+                    background: step > s ? "var(--accent)" : "var(--border)",
                   }}
                 />
               )}
@@ -103,10 +109,32 @@ export default function SignupModern() {
           onSubmit={async (e) => {
             e.preventDefault();
             if (step === 1) {
+              setSubmitError("");
+              if (!formData.fullName.trim() || !formData.email.trim()) {
+                setSubmitError("Full name and email are required.");
+                return;
+              }
               setStep(2);
               return;
             }
 
+            if (!formData.password || !formData.confirmPassword) {
+              setSubmitError("Password and confirm password are required.");
+              return;
+            }
+
+            if (formData.password !== formData.confirmPassword) {
+              setSubmitError("Passwords do not match.");
+              return;
+            }
+
+            if (formData.password.length < 8) {
+              setSubmitError("Password must be at least 8 characters long.");
+              return;
+            }
+
+            setSubmitError("");
+            setIsSubmitting(true);
             try {
               const payload = {
                 name: formData.fullName,
@@ -114,13 +142,23 @@ export default function SignupModern() {
                 phone: formData.phone,
                 password: formData.password,
               };
-              const { data } = await axios.post('/api/signup', payload);
+              const { data } = await axios.post("/api/signup", payload);
               if (data?.user) {
-                authLogin(data.user)
-                navigate('/student/dashboard', { replace: true });
+                authLogin(data.user);
+                navigate("/student/dashboard", { replace: true });
+                return;
               }
-            } catch {
-              // keep the form visible; backend error handling will surface elsewhere if needed
+              setSubmitError(
+                "Signup failed due to an unexpected server response.",
+              );
+            } catch (err) {
+              const msg =
+                err?.response?.data?.msg ||
+                err?.response?.data?.message ||
+                "Signup failed. Please try again.";
+              setSubmitError(msg);
+            } finally {
+              setIsSubmitting(false);
             }
           }}
         >
@@ -132,7 +170,9 @@ export default function SignupModern() {
                   className="app-input"
                   placeholder="John Doe"
                   value={formData.fullName}
-                  onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, fullName: e.target.value })
+                  }
                   required
                 />
               </div>
@@ -144,7 +184,9 @@ export default function SignupModern() {
                   type="email"
                   placeholder="you@university.edu"
                   value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, email: e.target.value })
+                  }
                   required
                 />
               </div>
@@ -156,7 +198,9 @@ export default function SignupModern() {
                   type="tel"
                   placeholder="+1 (555) 000-0000"
                   value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, phone: e.target.value })
+                  }
                 />
               </div>
 
@@ -174,7 +218,9 @@ export default function SignupModern() {
                   type="password"
                   placeholder="Min. 8 characters"
                   value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, password: e.target.value })
+                  }
                   required
                 />
               </div>
@@ -186,7 +232,12 @@ export default function SignupModern() {
                   type="password"
                   placeholder="Re-enter your password"
                   value={formData.confirmPassword}
-                  onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      confirmPassword: e.target.value,
+                    })
+                  }
                   required
                 />
               </div>
@@ -194,25 +245,29 @@ export default function SignupModern() {
               <div className="form-group">
                 <label
                   style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
+                    display: "flex",
+                    alignItems: "flex-start",
                     gap: 10,
-                    fontSize: '0.875rem',
-                    color: 'var(--fg-muted)',
-                    cursor: 'pointer',
+                    fontSize: "0.875rem",
+                    color: "var(--fg-muted)",
+                    cursor: "pointer",
                   }}
                 >
                   <input type="checkbox" style={{ marginTop: 2 }} required />
                   <span>
-                    I agree to the{' '}
-                    <a href="#" style={{ color: 'var(--accent)' }}>Terms of Service</a>
-                    {' '}and{' '}
-                    <a href="#" style={{ color: 'var(--accent)' }}>Privacy Policy</a>
+                    I agree to the{" "}
+                    <a href="#" style={{ color: "var(--accent)" }}>
+                      Terms of Service
+                    </a>{" "}
+                    and{" "}
+                    <a href="#" style={{ color: "var(--accent)" }}>
+                      Privacy Policy
+                    </a>
                   </span>
                 </label>
               </div>
 
-              <div style={{ display: 'flex', gap: 12 }}>
+              <div style={{ display: "flex", gap: 12 }}>
                 <button
                   type="button"
                   className="btn-ghost"
@@ -221,26 +276,44 @@ export default function SignupModern() {
                 >
                   Back
                 </button>
-                <button type="submit" className="btn-primary" style={{ flex: 2 }}>
-                  Create Account
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  style={{ flex: 2 }}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? "Creating..." : "Create Account"}
                   <i className="bi bi-arrow-right" />
                 </button>
               </div>
             </>
           )}
+
+          {submitError && (
+            <div
+              style={{
+                marginTop: 14,
+                color: "var(--danger)",
+                fontSize: "0.92rem",
+                fontWeight: 600,
+              }}
+            >
+              {submitError}
+            </div>
+          )}
         </form>
 
         {/* Footer */}
-        <div style={{ textAlign: 'center', marginTop: 24 }}>
-          <span style={{ color: 'var(--fg-muted)', fontSize: '0.9375rem' }}>
-            Already have an account?{' '}
+        <div style={{ textAlign: "center", marginTop: 24 }}>
+          <span style={{ color: "var(--fg-muted)", fontSize: "0.9375rem" }}>
+            Already have an account?{" "}
           </span>
           <Link
             to="/login"
             style={{
-              color: 'var(--accent)',
+              color: "var(--accent)",
               fontWeight: 600,
-              fontSize: '0.9375rem',
+              fontSize: "0.9375rem",
             }}
           >
             Sign in
@@ -252,14 +325,14 @@ export default function SignupModern() {
       <Link
         to="/"
         style={{
-          position: 'absolute',
+          position: "absolute",
           top: 24,
           left: 24,
-          display: 'flex',
-          alignItems: 'center',
+          display: "flex",
+          alignItems: "center",
           gap: 8,
-          color: 'var(--fg-muted)',
-          fontSize: '0.9375rem',
+          color: "var(--fg-muted)",
+          fontSize: "0.9375rem",
           fontWeight: 500,
         }}
       >

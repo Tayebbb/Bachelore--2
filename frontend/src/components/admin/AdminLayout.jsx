@@ -6,6 +6,11 @@ const adminMenu = [
   { to: '/admin/dashboard', label: 'Overview', icon: 'bi-speedometer2' },
   { to: '/admin/users', label: 'Users', icon: 'bi-people' },
   { to: '/admin/listings', label: 'Listing Review', icon: 'bi-patch-check' },
+  { to: '/admin/tuition-review', label: 'Tution Review', icon: 'bi-journal-check' },
+  { to: '/admin/houserent-review', label: 'Houserent Review', icon: 'bi-house-check' },
+  { to: '/admin/maid-service-review', label: 'Maid Service Review', icon: 'bi-person-check' },
+  { to: '/admin/marketplace-review', label: 'Marketplace Review', icon: 'bi-shop' },
+  { to: '/admin/announcements', label: 'Announcements', icon: 'bi-megaphone' },
   { to: '/admin/payments', label: 'Payments', icon: 'bi-credit-card-2-front' },
 ];
 

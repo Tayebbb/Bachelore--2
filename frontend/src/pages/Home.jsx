@@ -1,12 +1,11 @@
-import React, { useState, useEffect } from 'react'
-import Announcements from '../components/Announcements'
-import { Link } from 'react-router-dom'
+import React, { useState, useEffect } from "react";
+import Announcements from "../components/Announcements";
+import { Link } from "react-router-dom";
 
-
-import FEATURES from '../data/features'
-import FeatureCard from '../components/FeatureCard'
-import ActivityFeed from '../components/ActivityFeed.jsx';
-import api from '../components/axios.jsx';
+import FEATURES from "../data/features";
+import FeatureCard from "../components/FeatureCard";
+import ActivityFeed from "../components/ActivityFeed.jsx";
+import api from "../components/axios.jsx";
 
 export default function Home() {
   const [email, setEmail] = useState("");
@@ -151,11 +150,8 @@ export default function Home() {
           </span>
         </div>
         <div className="row g-4">
-          {FEATURES.map((f)=> (
-            <div
-              className="col-6 col-md-4"
-              key={f.key}
-            >
+          {FEATURES.map((f) => (
+            <div className="col-6 col-md-4" key={f.key}>
               <FeatureCard feature={f} />
             </div>
           ))}
