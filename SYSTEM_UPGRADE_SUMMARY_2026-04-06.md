@@ -3,6 +3,7 @@
 ## Completed Upgrade Areas
 
 ### 1) Database + SQL Mastery Deliverable
+
 - Added a single SQL mastery script: `BACHELORE_SQL_MASTERY.sql`
 - Includes:
   - Constraints (CHECK, UNIQUE index-based)
@@ -20,6 +21,7 @@
     - CROSS APPLY + OUTER APPLY
 
 ### 2) Backend Integration (Node.js / Express)
+
 - Extended API with SQL demonstration and dashboard endpoints:
   - `GET /api/dashboard/stats`
   - `GET /api/sql/features` (admin-only via token/adminCode)
@@ -30,6 +32,7 @@
 - Kept activity feed automation for payment transaction updates.
 
 ### 3) Frontend Updates (React / Vite)
+
 - Added dark mode toggle in navbar with localStorage persistence.
 - Added live dashboard stat cards on Home page from backend aggregates.
 - Updated activity feed to poll backend every 15 seconds for near real-time updates.
@@ -45,12 +48,14 @@
 ## Key Files Updated
 
 ### Backend
+
 - `backend/routes/api.js`
 - `backend/db/connection.js`
 - `backend/config/database.js`
 - `backend/test-db-connection.js`
 
 ### Frontend
+
 - `frontend/src/routes/router.jsx`
 - `frontend/src/components/Navbar.jsx`
 - `frontend/src/pages/Home.jsx`
@@ -58,9 +63,11 @@
 - `frontend/src/pages/Profile.jsx` (new)
 
 ### SQL Deliverable
+
 - `BACHELORE_SQL_MASTERY.sql` (new)
 
 ## Validation Performed
+
 - Frontend build succeeded with `npm run build`.
 - Backend route syntax validation succeeded.
 - Runtime endpoint checks succeeded:
@@ -68,5 +75,6 @@
   - `GET /api/sql/features?adminCode=choton2025`
 
 ## Notes
+
 - Legacy and modern schema naming differences were handled in API fallbacks to avoid query breakage.
 - Existing project-specific node_modules changes are from dependency installation/lockfile updates.
