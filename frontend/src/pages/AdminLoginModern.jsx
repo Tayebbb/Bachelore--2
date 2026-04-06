@@ -10,7 +10,7 @@ export default function AdminLoginModern() {
 
   useEffect(() => {
     if (isAdminAuthed()) {
-      navigate('/admin-dashboard', { replace: true });
+      navigate('/admin/dashboard', { replace: true });
     }
   }, [navigate]);
 
@@ -24,7 +24,7 @@ export default function AdminLoginModern() {
     try {
       const { data } = await axios.post('/api/admin/login', { adminCode });
       adminLogin({ name: 'Admin', role: 'admin' }, data?.token);
-      navigate('/admin-dashboard', { replace: true });
+      navigate('/admin/dashboard', { replace: true });
     } catch (err) {
       setError(err?.response?.data?.msg || 'Invalid admin code');
     }

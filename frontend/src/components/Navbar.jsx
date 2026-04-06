@@ -11,54 +11,54 @@ export default function Navbar(){
     try {
       return localStorage.getItem('theme') || 'light'
     } catch (_) {
-      return 'light'
+      return "light";
     }
-  })
-  const navigate = useNavigate()
-  const location = useLocation()
+  });
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const toggleTheme = () => {
-    const nextTheme = theme === 'dark' ? 'light' : 'dark'
-    setTheme(nextTheme)
-    document.documentElement.setAttribute('data-theme', nextTheme)
+    const nextTheme = theme === "dark" ? "light" : "dark";
+    setTheme(nextTheme);
+    document.documentElement.setAttribute("data-theme", nextTheme);
     try {
       localStorage.setItem('theme', nextTheme)
     } catch (_) {}
-  }
+  };
 
   const handleLogout = () => {
-    authLogout()
-    setAuthed(false)
-    navigate('/')
-  }
+    authLogout();
+    setAuthed(false);
+    navigate("/");
+  };
 
-  useEffect(()=>{
-    const el = navRef.current
-    if(el){
+  useEffect(() => {
+    const el = navRef.current;
+    if (el) {
       const onScroll = () => {
         setIsScrolled(window.scrollY > 10)
       }
       window.addEventListener('scroll', onScroll, {passive:true})
       return ()=> window.removeEventListener('scroll', onScroll)
     }
-  }, [])
-
-  useEffect(()=>{
-    const onChange = ()=> setAuthed(isAuthed())
-    onAuthChange(onChange)
-    return ()=> offAuthChange(onChange)
-  }, [])
+  }, []);
 
   useEffect(() => {
-    setMenuOpen(false)
-  }, [location.pathname])
+    const onChange = () => setAuthed(isAuthed());
+    onAuthChange(onChange);
+    return () => offAuthChange(onChange);
+  }, []);
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme)
-  }, [theme])
+    setMenuOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
 
   // Don't show navbar on auth pages
-  if (location.pathname === '/login' || location.pathname === '/signup' || location.pathname === '/admin-login') {
+  if (location.pathname === '/login' || location.pathname === '/signup' || location.pathname === '/admin-login' || location.pathname === '/admin/login') {
     return null
   }
 

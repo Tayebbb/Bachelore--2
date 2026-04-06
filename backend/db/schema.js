@@ -23,7 +23,7 @@ CREATE TABLE dbo.USERS (
   name NVARCHAR(120) NOT NULL,
   email NVARCHAR(180) NOT NULL UNIQUE,
   password_hash NVARCHAR(255) NOT NULL,
-  role NVARCHAR(20) NOT NULL CHECK (role IN ('student', 'admin')),
+  role NVARCHAR(20) NOT NULL CHECK (UPPER(role) IN ('STUDENT', 'ADMIN')),
   created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
 );
 
@@ -42,7 +42,9 @@ CREATE TABLE dbo.SUBSCRIPTIONPAYMENTS (
   amount DECIMAL(10, 2) NOT NULL,
   status NVARCHAR(30) NOT NULL,
   payment_date DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
-  CONSTRAINT FK_SUBSCRIPTIONPAYMENTS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id)
+  CONSTRAINT FK_SUBSCRIPTIONPAYMENTS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT CK_SUBSCRIPTIONPAYMENTS_STATUS_BASE CHECK (LOWER(status) IN ('pending', 'paid', 'failed', 'refunded')),
+  CONSTRAINT CK_SUBSCRIPTIONPAYMENTS_AMOUNT_BASE CHECK (amount > 0)
 );
 
 CREATE TABLE dbo.USERACTIVITIES (
@@ -52,7 +54,7 @@ CREATE TABLE dbo.USERACTIVITIES (
   reference_table NVARCHAR(60) NOT NULL,
   reference_id UNIQUEIDENTIFIER NULL,
   [timestamp] DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
-  CONSTRAINT FK_USERACTIVITIES_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id)
+  CONSTRAINT FK_USERACTIVITIES_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE
 );
 
 CREATE TABLE dbo.TUITIONS (
@@ -63,7 +65,8 @@ CREATE TABLE dbo.TUITIONS (
   location NVARCHAR(160) NOT NULL,
   status NVARCHAR(30) NOT NULL DEFAULT 'open',
   created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
-  CONSTRAINT FK_TUITIONS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id)
+  CONSTRAINT FK_TUITIONS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT CK_TUITIONS_STATUS_BASE CHECK (LOWER(status) IN ('pending', 'approved', 'rejected', 'open', 'closed', 'booked'))
 );
 
 CREATE TABLE dbo.APPLIEDTUITIONS (
@@ -72,15 +75,18 @@ CREATE TABLE dbo.APPLIEDTUITIONS (
   user_id UNIQUEIDENTIFIER NOT NULL,
   status NVARCHAR(30) NOT NULL DEFAULT 'pending',
   applied_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
-  CONSTRAINT FK_APPLIEDTUITIONS_TUITIONS FOREIGN KEY (tuition_id) REFERENCES dbo.TUITIONS(tuition_id),
-  CONSTRAINT FK_APPLIEDTUITIONS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id)
+  CONSTRAINT FK_APPLIEDTUITIONS_TUITIONS FOREIGN KEY (tuition_id) REFERENCES dbo.TUITIONS(tuition_id) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT FK_APPLIEDTUITIONS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT CK_APPLIEDTUITIONS_STATUS_BASE CHECK (LOWER(status) IN ('pending', 'approved', 'rejected', 'booked'))
 );
 
 CREATE TABLE dbo.BOOKEDTUITIONS (
   booking_id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT NEWID(),
   application_id UNIQUEIDENTIFIER NOT NULL UNIQUE,
+  booking_status NVARCHAR(20) NOT NULL DEFAULT 'confirmed',
   confirmed_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
-  CONSTRAINT FK_BOOKEDTUITIONS_APPLIEDTUITIONS FOREIGN KEY (application_id) REFERENCES dbo.APPLIEDTUITIONS(application_id)
+  CONSTRAINT FK_BOOKEDTUITIONS_APPLIEDTUITIONS FOREIGN KEY (application_id) REFERENCES dbo.APPLIEDTUITIONS(application_id) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT CK_BOOKEDTUITIONS_STATUS_BASE CHECK (LOWER(booking_status) IN ('confirmed', 'cancelled', 'completed'))
 );
 
 CREATE TABLE dbo.MAIDS (
@@ -90,7 +96,8 @@ CREATE TABLE dbo.MAIDS (
   location NVARCHAR(160) NOT NULL,
   availability NVARCHAR(40) NOT NULL,
   created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
-  CONSTRAINT FK_MAIDS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id)
+  CONSTRAINT FK_MAIDS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT CK_MAIDS_SALARY_BASE CHECK (salary > 0)
 );
 
 CREATE TABLE dbo.APPLIEDMAIDS (
@@ -99,15 +106,18 @@ CREATE TABLE dbo.APPLIEDMAIDS (
   user_id UNIQUEIDENTIFIER NOT NULL,
   status NVARCHAR(30) NOT NULL DEFAULT 'pending',
   applied_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
-  CONSTRAINT FK_APPLIEDMAIDS_MAIDS FOREIGN KEY (maid_id) REFERENCES dbo.MAIDS(maid_id),
-  CONSTRAINT FK_APPLIEDMAIDS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id)
+  CONSTRAINT FK_APPLIEDMAIDS_MAIDS FOREIGN KEY (maid_id) REFERENCES dbo.MAIDS(maid_id) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT FK_APPLIEDMAIDS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT CK_APPLIEDMAIDS_STATUS_BASE CHECK (LOWER(status) IN ('pending', 'approved', 'rejected', 'booked'))
 );
 
 CREATE TABLE dbo.BOOKEDMAIDS (
   booking_id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT NEWID(),
   application_id UNIQUEIDENTIFIER NOT NULL UNIQUE,
+  booking_status NVARCHAR(20) NOT NULL DEFAULT 'confirmed',
   confirmed_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
-  CONSTRAINT FK_BOOKEDMAIDS_APPLIEDMAIDS FOREIGN KEY (application_id) REFERENCES dbo.APPLIEDMAIDS(application_id)
+  CONSTRAINT FK_BOOKEDMAIDS_APPLIEDMAIDS FOREIGN KEY (application_id) REFERENCES dbo.APPLIEDMAIDS(application_id) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT CK_BOOKEDMAIDS_STATUS_BASE CHECK (LOWER(booking_status) IN ('confirmed', 'cancelled', 'completed'))
 );
 
 CREATE TABLE dbo.ROOMMATELISTINGS (
@@ -118,7 +128,8 @@ CREATE TABLE dbo.ROOMMATELISTINGS (
   preference NVARCHAR(MAX) NULL,
   [type] NVARCHAR(20) NOT NULL CHECK ([type] IN ('host', 'seeker')),
   created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
-  CONSTRAINT FK_ROOMMATELISTINGS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id)
+  CONSTRAINT FK_ROOMMATELISTINGS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT CK_ROOMMATELISTINGS_RENT_BASE CHECK (rent > 0)
 );
 
 CREATE TABLE dbo.APPLIEDROOMMATES (
@@ -127,15 +138,18 @@ CREATE TABLE dbo.APPLIEDROOMMATES (
   user_id UNIQUEIDENTIFIER NOT NULL,
   status NVARCHAR(30) NOT NULL DEFAULT 'pending',
   applied_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
-  CONSTRAINT FK_APPLIEDROOMMATES_ROOMMATELISTINGS FOREIGN KEY (listing_id) REFERENCES dbo.ROOMMATELISTINGS(listing_id),
-  CONSTRAINT FK_APPLIEDROOMMATES_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id)
+  CONSTRAINT FK_APPLIEDROOMMATES_ROOMMATELISTINGS FOREIGN KEY (listing_id) REFERENCES dbo.ROOMMATELISTINGS(listing_id) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT FK_APPLIEDROOMMATES_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT CK_APPLIEDROOMMATES_STATUS_BASE CHECK (LOWER(status) IN ('pending', 'approved', 'rejected', 'booked'))
 );
 
 CREATE TABLE dbo.BOOKEDROOMMATES (
   booking_id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT NEWID(),
   application_id UNIQUEIDENTIFIER NOT NULL UNIQUE,
+  booking_status NVARCHAR(20) NOT NULL DEFAULT 'confirmed',
   confirmed_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
-  CONSTRAINT FK_BOOKEDROOMMATES_APPLIEDROOMMATES FOREIGN KEY (application_id) REFERENCES dbo.APPLIEDROOMMATES(application_id)
+  CONSTRAINT FK_BOOKEDROOMMATES_APPLIEDROOMMATES FOREIGN KEY (application_id) REFERENCES dbo.APPLIEDROOMMATES(application_id) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT CK_BOOKEDROOMMATES_STATUS_BASE CHECK (LOWER(booking_status) IN ('confirmed', 'cancelled', 'completed'))
 );
 
 CREATE TABLE dbo.HOUSERENTLISTINGS (
@@ -146,7 +160,9 @@ CREATE TABLE dbo.HOUSERENTLISTINGS (
   rooms INT NOT NULL,
   description NVARCHAR(MAX) NULL,
   created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
-  CONSTRAINT FK_HOUSERENTLISTINGS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id)
+  CONSTRAINT FK_HOUSERENTLISTINGS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT CK_HOUSERENT_ROOMS_BASE CHECK (rooms > 0),
+  CONSTRAINT CK_HOUSERENT_RENT_BASE CHECK (rent > 0)
 );
 
 CREATE TABLE dbo.HOUSECONTACTS (
@@ -155,8 +171,8 @@ CREATE TABLE dbo.HOUSECONTACTS (
   user_id UNIQUEIDENTIFIER NOT NULL,
   message NVARCHAR(MAX) NOT NULL,
   created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
-  CONSTRAINT FK_HOUSECONTACTS_HOUSERENTLISTINGS FOREIGN KEY (house_id) REFERENCES dbo.HOUSERENTLISTINGS(house_id),
-  CONSTRAINT FK_HOUSECONTACTS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id)
+  CONSTRAINT FK_HOUSECONTACTS_HOUSERENTLISTINGS FOREIGN KEY (house_id) REFERENCES dbo.HOUSERENTLISTINGS(house_id) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT FK_HOUSECONTACTS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE
 );
 
 CREATE TABLE dbo.MARKETPLACELISTINGS (
@@ -167,8 +183,967 @@ CREATE TABLE dbo.MARKETPLACELISTINGS (
   [condition] NVARCHAR(40) NOT NULL,
   status NVARCHAR(30) NOT NULL DEFAULT 'available',
   created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
-  CONSTRAINT FK_MARKETPLACELISTINGS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id)
+  CONSTRAINT FK_MARKETPLACELISTINGS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT CK_MARKETPLACELISTINGS_PRICE_BASE CHECK (price > 0),
+  CONSTRAINT CK_MARKETPLACELISTINGS_STATUS_BASE CHECK (LOWER(status) IN ('pending', 'approved', 'rejected', 'available', 'sold'))
 );
+`;
+
+const enhancementSql = `
+IF COL_LENGTH('dbo.USERS', 'is_blocked') IS NULL
+BEGIN
+  ALTER TABLE dbo.USERS ADD is_blocked BIT NOT NULL CONSTRAINT DF_USERS_IS_BLOCKED DEFAULT (0);
+END;
+
+IF COL_LENGTH('dbo.USERS', 'block_reason') IS NULL
+BEGIN
+  ALTER TABLE dbo.USERS ADD block_reason NVARCHAR(300) NULL;
+END;
+
+IF COL_LENGTH('dbo.USERS', 'subscription_active') IS NULL
+BEGIN
+  ALTER TABLE dbo.USERS ADD subscription_active BIT NOT NULL CONSTRAINT DF_USERS_SUB_ACTIVE DEFAULT (0);
+END;
+
+IF COL_LENGTH('dbo.USERACTIVITIES', 'activity_description') IS NULL
+BEGIN
+  ALTER TABLE dbo.USERACTIVITIES ADD activity_description NVARCHAR(300) NULL;
+END;
+
+IF COL_LENGTH('dbo.MAIDS', 'status') IS NULL
+BEGIN
+  ALTER TABLE dbo.MAIDS ADD status NVARCHAR(30) NOT NULL CONSTRAINT DF_MAIDS_STATUS DEFAULT ('Pending');
+END;
+
+IF COL_LENGTH('dbo.ROOMMATELISTINGS', 'status') IS NULL
+BEGIN
+  ALTER TABLE dbo.ROOMMATELISTINGS ADD status NVARCHAR(30) NOT NULL CONSTRAINT DF_ROOMMATES_STATUS DEFAULT ('Pending');
+END;
+
+IF COL_LENGTH('dbo.HOUSERENTLISTINGS', 'status') IS NULL
+BEGIN
+  ALTER TABLE dbo.HOUSERENTLISTINGS ADD status NVARCHAR(30) NOT NULL CONSTRAINT DF_HOUSE_STATUS DEFAULT ('Pending');
+END;
+
+IF COL_LENGTH('dbo.BOOKEDTUITIONS', 'booking_status') IS NULL
+BEGIN
+  ALTER TABLE dbo.BOOKEDTUITIONS ADD booking_status NVARCHAR(20) NOT NULL CONSTRAINT DF_BOOKEDTUITIONS_STATUS DEFAULT ('confirmed');
+END;
+
+IF COL_LENGTH('dbo.BOOKEDMAIDS', 'booking_status') IS NULL
+BEGIN
+  ALTER TABLE dbo.BOOKEDMAIDS ADD booking_status NVARCHAR(20) NOT NULL CONSTRAINT DF_BOOKEDMAIDS_STATUS DEFAULT ('confirmed');
+END;
+
+IF COL_LENGTH('dbo.BOOKEDROOMMATES', 'booking_status') IS NULL
+BEGIN
+  ALTER TABLE dbo.BOOKEDROOMMATES ADD booking_status NVARCHAR(20) NOT NULL CONSTRAINT DF_BOOKEDROOMMATES_STATUS DEFAULT ('confirmed');
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_USERS_ROLE_DOMAIN')
+BEGIN
+  ALTER TABLE dbo.USERS ADD CONSTRAINT CK_USERS_ROLE_DOMAIN CHECK (UPPER(role) IN ('ADMIN', 'STUDENT'));
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_TUITIONS_STATUS_DOMAIN')
+BEGIN
+  ALTER TABLE dbo.TUITIONS ADD CONSTRAINT CK_TUITIONS_STATUS_DOMAIN CHECK (LOWER(status) IN ('pending', 'approved', 'rejected', 'open', 'closed', 'booked'));
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_MAIDS_STATUS_DOMAIN')
+BEGIN
+  ALTER TABLE dbo.MAIDS ADD CONSTRAINT CK_MAIDS_STATUS_DOMAIN CHECK (LOWER(status) IN ('pending', 'approved', 'rejected', 'open', 'closed', 'booked'));
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_ROOMMATES_STATUS_DOMAIN')
+BEGIN
+  ALTER TABLE dbo.ROOMMATELISTINGS ADD CONSTRAINT CK_ROOMMATES_STATUS_DOMAIN CHECK (LOWER(status) IN ('pending', 'approved', 'rejected', 'open', 'closed', 'booked'));
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_HOUSE_STATUS_DOMAIN')
+BEGIN
+  ALTER TABLE dbo.HOUSERENTLISTINGS ADD CONSTRAINT CK_HOUSE_STATUS_DOMAIN CHECK (LOWER(status) IN ('pending', 'approved', 'rejected', 'open', 'closed'));
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_MARKET_STATUS_DOMAIN')
+BEGIN
+  ALTER TABLE dbo.MARKETPLACELISTINGS ADD CONSTRAINT CK_MARKET_STATUS_DOMAIN CHECK (LOWER(status) IN ('pending', 'approved', 'rejected', 'available', 'sold'));
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_APPLIEDTUITIONS_STATUS_DOMAIN')
+BEGIN
+  ALTER TABLE dbo.APPLIEDTUITIONS ADD CONSTRAINT CK_APPLIEDTUITIONS_STATUS_DOMAIN CHECK (LOWER(status) IN ('pending', 'approved', 'rejected', 'booked'));
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_APPLIEDMAIDS_STATUS_DOMAIN')
+BEGIN
+  ALTER TABLE dbo.APPLIEDMAIDS ADD CONSTRAINT CK_APPLIEDMAIDS_STATUS_DOMAIN CHECK (LOWER(status) IN ('pending', 'approved', 'rejected', 'booked'));
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_APPLIEDROOMMATES_STATUS_DOMAIN')
+BEGIN
+  ALTER TABLE dbo.APPLIEDROOMMATES ADD CONSTRAINT CK_APPLIEDROOMMATES_STATUS_DOMAIN CHECK (LOWER(status) IN ('pending', 'approved', 'rejected', 'booked'));
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_BOOKEDTUITIONS_STATUS_DOMAIN')
+BEGIN
+  ALTER TABLE dbo.BOOKEDTUITIONS ADD CONSTRAINT CK_BOOKEDTUITIONS_STATUS_DOMAIN CHECK (LOWER(booking_status) IN ('confirmed', 'cancelled', 'completed'));
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_BOOKEDMAIDS_STATUS_DOMAIN')
+BEGIN
+  ALTER TABLE dbo.BOOKEDMAIDS ADD CONSTRAINT CK_BOOKEDMAIDS_STATUS_DOMAIN CHECK (LOWER(booking_status) IN ('confirmed', 'cancelled', 'completed'));
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_BOOKEDROOMMATES_STATUS_DOMAIN')
+BEGIN
+  ALTER TABLE dbo.BOOKEDROOMMATES ADD CONSTRAINT CK_BOOKEDROOMMATES_STATUS_DOMAIN CHECK (LOWER(booking_status) IN ('confirmed', 'cancelled', 'completed'));
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_SUBSCRIPTIONPAYMENTS_STATUS_DOMAIN')
+BEGIN
+  ALTER TABLE dbo.SUBSCRIPTIONPAYMENTS ADD CONSTRAINT CK_SUBSCRIPTIONPAYMENTS_STATUS_DOMAIN CHECK (LOWER(status) IN ('pending', 'paid', 'failed', 'refunded'));
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_SUBSCRIPTIONPAYMENTS_AMOUNT_DOMAIN')
+BEGIN
+  ALTER TABLE dbo.SUBSCRIPTIONPAYMENTS ADD CONSTRAINT CK_SUBSCRIPTIONPAYMENTS_AMOUNT_DOMAIN CHECK (amount > 0);
+END;
+
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_ANNOUNCEMENTS_USERS')
+  ALTER TABLE dbo.ANNOUNCEMENTS DROP CONSTRAINT FK_ANNOUNCEMENTS_USERS;
+ALTER TABLE dbo.ANNOUNCEMENTS ADD CONSTRAINT FK_ANNOUNCEMENTS_USERS FOREIGN KEY (created_by) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_SUBSCRIPTIONPAYMENTS_USERS')
+  ALTER TABLE dbo.SUBSCRIPTIONPAYMENTS DROP CONSTRAINT FK_SUBSCRIPTIONPAYMENTS_USERS;
+ALTER TABLE dbo.SUBSCRIPTIONPAYMENTS ADD CONSTRAINT FK_SUBSCRIPTIONPAYMENTS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_USERACTIVITIES_USERS')
+  ALTER TABLE dbo.USERACTIVITIES DROP CONSTRAINT FK_USERACTIVITIES_USERS;
+ALTER TABLE dbo.USERACTIVITIES ADD CONSTRAINT FK_USERACTIVITIES_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_TUITIONS_USERS')
+  ALTER TABLE dbo.TUITIONS DROP CONSTRAINT FK_TUITIONS_USERS;
+ALTER TABLE dbo.TUITIONS ADD CONSTRAINT FK_TUITIONS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_MAIDS_USERS')
+  ALTER TABLE dbo.MAIDS DROP CONSTRAINT FK_MAIDS_USERS;
+ALTER TABLE dbo.MAIDS ADD CONSTRAINT FK_MAIDS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_ROOMMATELISTINGS_USERS')
+  ALTER TABLE dbo.ROOMMATELISTINGS DROP CONSTRAINT FK_ROOMMATELISTINGS_USERS;
+ALTER TABLE dbo.ROOMMATELISTINGS ADD CONSTRAINT FK_ROOMMATELISTINGS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_HOUSERENTLISTINGS_USERS')
+  ALTER TABLE dbo.HOUSERENTLISTINGS DROP CONSTRAINT FK_HOUSERENTLISTINGS_USERS;
+ALTER TABLE dbo.HOUSERENTLISTINGS ADD CONSTRAINT FK_HOUSERENTLISTINGS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_MARKETPLACELISTINGS_USERS')
+  ALTER TABLE dbo.MARKETPLACELISTINGS DROP CONSTRAINT FK_MARKETPLACELISTINGS_USERS;
+ALTER TABLE dbo.MARKETPLACELISTINGS ADD CONSTRAINT FK_MARKETPLACELISTINGS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_APPLIEDTUITIONS_TUITIONS')
+  ALTER TABLE dbo.APPLIEDTUITIONS DROP CONSTRAINT FK_APPLIEDTUITIONS_TUITIONS;
+ALTER TABLE dbo.APPLIEDTUITIONS ADD CONSTRAINT FK_APPLIEDTUITIONS_TUITIONS FOREIGN KEY (tuition_id) REFERENCES dbo.TUITIONS(tuition_id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_APPLIEDTUITIONS_USERS')
+  ALTER TABLE dbo.APPLIEDTUITIONS DROP CONSTRAINT FK_APPLIEDTUITIONS_USERS;
+ALTER TABLE dbo.APPLIEDTUITIONS ADD CONSTRAINT FK_APPLIEDTUITIONS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_BOOKEDTUITIONS_APPLIEDTUITIONS')
+  ALTER TABLE dbo.BOOKEDTUITIONS DROP CONSTRAINT FK_BOOKEDTUITIONS_APPLIEDTUITIONS;
+ALTER TABLE dbo.BOOKEDTUITIONS ADD CONSTRAINT FK_BOOKEDTUITIONS_APPLIEDTUITIONS FOREIGN KEY (application_id) REFERENCES dbo.APPLIEDTUITIONS(application_id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_APPLIEDMAIDS_MAIDS')
+  ALTER TABLE dbo.APPLIEDMAIDS DROP CONSTRAINT FK_APPLIEDMAIDS_MAIDS;
+ALTER TABLE dbo.APPLIEDMAIDS ADD CONSTRAINT FK_APPLIEDMAIDS_MAIDS FOREIGN KEY (maid_id) REFERENCES dbo.MAIDS(maid_id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_APPLIEDMAIDS_USERS')
+  ALTER TABLE dbo.APPLIEDMAIDS DROP CONSTRAINT FK_APPLIEDMAIDS_USERS;
+ALTER TABLE dbo.APPLIEDMAIDS ADD CONSTRAINT FK_APPLIEDMAIDS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_BOOKEDMAIDS_APPLIEDMAIDS')
+  ALTER TABLE dbo.BOOKEDMAIDS DROP CONSTRAINT FK_BOOKEDMAIDS_APPLIEDMAIDS;
+ALTER TABLE dbo.BOOKEDMAIDS ADD CONSTRAINT FK_BOOKEDMAIDS_APPLIEDMAIDS FOREIGN KEY (application_id) REFERENCES dbo.APPLIEDMAIDS(application_id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_APPLIEDROOMMATES_ROOMMATELISTINGS')
+  ALTER TABLE dbo.APPLIEDROOMMATES DROP CONSTRAINT FK_APPLIEDROOMMATES_ROOMMATELISTINGS;
+ALTER TABLE dbo.APPLIEDROOMMATES ADD CONSTRAINT FK_APPLIEDROOMMATES_ROOMMATELISTINGS FOREIGN KEY (listing_id) REFERENCES dbo.ROOMMATELISTINGS(listing_id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_APPLIEDROOMMATES_USERS')
+  ALTER TABLE dbo.APPLIEDROOMMATES DROP CONSTRAINT FK_APPLIEDROOMMATES_USERS;
+ALTER TABLE dbo.APPLIEDROOMMATES ADD CONSTRAINT FK_APPLIEDROOMMATES_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_BOOKEDROOMMATES_APPLIEDROOMMATES')
+  ALTER TABLE dbo.BOOKEDROOMMATES DROP CONSTRAINT FK_BOOKEDROOMMATES_APPLIEDROOMMATES;
+ALTER TABLE dbo.BOOKEDROOMMATES ADD CONSTRAINT FK_BOOKEDROOMMATES_APPLIEDROOMMATES FOREIGN KEY (application_id) REFERENCES dbo.APPLIEDROOMMATES(application_id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_HOUSECONTACTS_HOUSERENTLISTINGS')
+  ALTER TABLE dbo.HOUSECONTACTS DROP CONSTRAINT FK_HOUSECONTACTS_HOUSERENTLISTINGS;
+ALTER TABLE dbo.HOUSECONTACTS ADD CONSTRAINT FK_HOUSECONTACTS_HOUSERENTLISTINGS FOREIGN KEY (house_id) REFERENCES dbo.HOUSERENTLISTINGS(house_id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_HOUSECONTACTS_USERS')
+  ALTER TABLE dbo.HOUSECONTACTS DROP CONSTRAINT FK_HOUSECONTACTS_USERS;
+ALTER TABLE dbo.HOUSECONTACTS ADD CONSTRAINT FK_HOUSECONTACTS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_USERS_ROLE_CREATED_AT' AND object_id = OBJECT_ID('dbo.USERS'))
+  CREATE INDEX IX_USERS_ROLE_CREATED_AT ON dbo.USERS(role, created_at DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_TUITIONS_USER_STATUS_CREATED' AND object_id = OBJECT_ID('dbo.TUITIONS'))
+  CREATE INDEX IX_TUITIONS_USER_STATUS_CREATED ON dbo.TUITIONS(user_id, status, created_at DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_MAIDS_USER_STATUS_CREATED' AND object_id = OBJECT_ID('dbo.MAIDS'))
+  CREATE INDEX IX_MAIDS_USER_STATUS_CREATED ON dbo.MAIDS(user_id, status, created_at DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_ROOMMATES_USER_STATUS_CREATED' AND object_id = OBJECT_ID('dbo.ROOMMATELISTINGS'))
+  CREATE INDEX IX_ROOMMATES_USER_STATUS_CREATED ON dbo.ROOMMATELISTINGS(user_id, status, created_at DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_HOUSE_USER_STATUS_CREATED' AND object_id = OBJECT_ID('dbo.HOUSERENTLISTINGS'))
+  CREATE INDEX IX_HOUSE_USER_STATUS_CREATED ON dbo.HOUSERENTLISTINGS(user_id, status, created_at DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_MARKET_USER_STATUS_CREATED' AND object_id = OBJECT_ID('dbo.MARKETPLACELISTINGS'))
+  CREATE INDEX IX_MARKET_USER_STATUS_CREATED ON dbo.MARKETPLACELISTINGS(user_id, status, created_at DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_AT_USER_STATUS_APPLIED' AND object_id = OBJECT_ID('dbo.APPLIEDTUITIONS'))
+  CREATE INDEX IX_AT_USER_STATUS_APPLIED ON dbo.APPLIEDTUITIONS(user_id, status, applied_at DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_AM_USER_STATUS_APPLIED' AND object_id = OBJECT_ID('dbo.APPLIEDMAIDS'))
+  CREATE INDEX IX_AM_USER_STATUS_APPLIED ON dbo.APPLIEDMAIDS(user_id, status, applied_at DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_AR_USER_STATUS_APPLIED' AND object_id = OBJECT_ID('dbo.APPLIEDROOMMATES'))
+  CREATE INDEX IX_AR_USER_STATUS_APPLIED ON dbo.APPLIEDROOMMATES(user_id, status, applied_at DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_SUBPAY_USER_STATUS_DATE' AND object_id = OBJECT_ID('dbo.SUBSCRIPTIONPAYMENTS'))
+  CREATE INDEX IX_SUBPAY_USER_STATUS_DATE ON dbo.SUBSCRIPTIONPAYMENTS(user_id, status, payment_date DESC);
+
+IF OBJECT_ID('dbo.vw_admin_dashboard_summary', 'V') IS NOT NULL
+  DROP VIEW dbo.vw_admin_dashboard_summary;
+
+EXEC('CREATE VIEW dbo.vw_admin_dashboard_summary AS
+SELECT
+  (SELECT COUNT(*) FROM dbo.USERS) AS total_users,
+  (SELECT COUNT(*) FROM dbo.TUITIONS)
+  + (SELECT COUNT(*) FROM dbo.MAIDS)
+  + (SELECT COUNT(*) FROM dbo.ROOMMATELISTINGS)
+  + (SELECT COUNT(*) FROM dbo.HOUSERENTLISTINGS)
+  + (SELECT COUNT(*) FROM dbo.MARKETPLACELISTINGS) AS total_listings,
+  (SELECT COUNT(*) FROM dbo.BOOKEDTUITIONS)
+  + (SELECT COUNT(*) FROM dbo.BOOKEDMAIDS)
+  + (SELECT COUNT(*) FROM dbo.BOOKEDROOMMATES) AS total_bookings,
+  (SELECT ISNULL(SUM(amount), 0) FROM dbo.SUBSCRIPTIONPAYMENTS WHERE status = ''paid'') AS total_revenue,
+  (SELECT COUNT(*) FROM dbo.APPLIEDTUITIONS WHERE status = ''pending'')
+  + (SELECT COUNT(*) FROM dbo.APPLIEDMAIDS WHERE status = ''pending'')
+  + (SELECT COUNT(*) FROM dbo.APPLIEDROOMMATES WHERE status = ''pending'') AS pending_applications
+');
+
+IF OBJECT_ID('dbo.vw_student_dashboard', 'V') IS NOT NULL
+  DROP VIEW dbo.vw_student_dashboard;
+
+EXEC('CREATE VIEW dbo.vw_student_dashboard AS
+SELECT
+  u.user_id,
+  (
+    (SELECT COUNT(*) FROM dbo.APPLIEDTUITIONS atq WHERE atq.user_id = u.user_id)
+    + (SELECT COUNT(*) FROM dbo.APPLIEDMAIDS am WHERE am.user_id = u.user_id)
+    + (SELECT COUNT(*) FROM dbo.APPLIEDROOMMATES ar WHERE ar.user_id = u.user_id)
+  ) AS total_applications,
+  (
+    (SELECT COUNT(*) FROM dbo.BOOKEDTUITIONS bt INNER JOIN dbo.APPLIEDTUITIONS atq ON atq.application_id = bt.application_id WHERE atq.user_id = u.user_id)
+    + (SELECT COUNT(*) FROM dbo.BOOKEDMAIDS bm INNER JOIN dbo.APPLIEDMAIDS am ON am.application_id = bm.application_id WHERE am.user_id = u.user_id)
+    + (SELECT COUNT(*) FROM dbo.BOOKEDROOMMATES br INNER JOIN dbo.APPLIEDROOMMATES ar ON ar.application_id = br.application_id WHERE ar.user_id = u.user_id)
+  ) AS total_bookings,
+  (
+    (SELECT COUNT(*) FROM dbo.TUITIONS t WHERE t.user_id = u.user_id)
+    + (SELECT COUNT(*) FROM dbo.MAIDS m WHERE m.user_id = u.user_id)
+    + (SELECT COUNT(*) FROM dbo.ROOMMATELISTINGS r WHERE r.user_id = u.user_id)
+    + (SELECT COUNT(*) FROM dbo.HOUSERENTLISTINGS h WHERE h.user_id = u.user_id)
+    + (SELECT COUNT(*) FROM dbo.MARKETPLACELISTINGS mp WHERE mp.user_id = u.user_id)
+  ) AS total_listings,
+  (SELECT ISNULL(SUM(sp.amount), 0) FROM dbo.SUBSCRIPTIONPAYMENTS sp WHERE sp.user_id = u.user_id AND sp.status = ''paid'') AS total_payments
+FROM dbo.USERS u
+');
+
+IF OBJECT_ID('dbo.sp_admin_review_listing', 'P') IS NOT NULL
+  DROP PROCEDURE dbo.sp_admin_review_listing;
+
+EXEC('CREATE PROCEDURE dbo.sp_admin_review_listing
+  @listing_type NVARCHAR(40),
+  @listing_id UNIQUEIDENTIFIER,
+  @decision NVARCHAR(40),
+  @admin_user_id UNIQUEIDENTIFIER
+AS
+BEGIN
+  SET NOCOUNT ON;
+  SET XACT_ABORT ON;
+
+  DECLARE @status NVARCHAR(30) = CASE WHEN LOWER(@decision) = ''approved'' THEN ''Approved'' ELSE ''Rejected'' END;
+
+  BEGIN TRY
+    BEGIN TRANSACTION;
+
+    IF LOWER(@listing_type) = ''tuition''
+      UPDATE dbo.TUITIONS SET status = @status WHERE tuition_id = @listing_id;
+    ELSE IF LOWER(@listing_type) = ''maid''
+      UPDATE dbo.MAIDS SET status = @status WHERE maid_id = @listing_id;
+    ELSE IF LOWER(@listing_type) = ''roommate''
+      UPDATE dbo.ROOMMATELISTINGS SET status = @status WHERE listing_id = @listing_id;
+    ELSE IF LOWER(@listing_type) = ''houserent''
+      UPDATE dbo.HOUSERENTLISTINGS SET status = @status WHERE house_id = @listing_id;
+    ELSE IF LOWER(@listing_type) = ''marketplace''
+      UPDATE dbo.MARKETPLACELISTINGS SET status = @status WHERE item_id = @listing_id;
+    ELSE
+      THROW 50010, ''Unsupported listing type'', 1;
+
+    INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id)
+    VALUES (@admin_user_id, CONCAT(''admin_review_'', LOWER(@listing_type), ''_'', LOWER(@decision)), ''LISTING_REVIEW'', @listing_id);
+
+    COMMIT TRANSACTION;
+  END TRY
+  BEGIN CATCH
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+    THROW;
+  END CATCH
+END
+');
+
+IF OBJECT_ID('dbo.trg_tuitions_activity_ins', 'TR') IS NOT NULL
+  DROP TRIGGER dbo.trg_tuitions_activity_ins;
+
+EXEC('CREATE TRIGGER dbo.trg_tuitions_activity_ins
+ON dbo.TUITIONS
+AFTER INSERT
+AS
+BEGIN
+  SET NOCOUNT ON;
+  INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id)
+  SELECT i.user_id, ''create_tuition'', ''TUITIONS'', i.tuition_id
+  FROM inserted i;
+END
+');
+
+IF OBJECT_ID('dbo.trg_marketplace_activity_ins', 'TR') IS NOT NULL
+  DROP TRIGGER dbo.trg_marketplace_activity_ins;
+
+EXEC('CREATE TRIGGER dbo.trg_marketplace_activity_ins
+ON dbo.MARKETPLACELISTINGS
+AFTER INSERT
+AS
+BEGIN
+  SET NOCOUNT ON;
+  INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id)
+  SELECT i.user_id, ''create_marketplace_item'', ''MARKETPLACELISTINGS'', i.item_id
+  FROM inserted i;
+END
+');
+
+IF OBJECT_ID('dbo.vw_admin_dashboard_summary', 'V') IS NOT NULL
+  DROP VIEW dbo.vw_admin_dashboard_summary;
+
+EXEC('CREATE VIEW dbo.vw_admin_dashboard_summary AS
+WITH payment_agg AS (
+  SELECT
+    ISNULL(SUM(CASE WHEN status = ''paid'' THEN amount ELSE 0 END), 0) AS total_revenue,
+    SUM(CASE WHEN status = ''paid'' THEN 1 ELSE 0 END) AS paid_payment_count,
+    CAST(AVG(CASE WHEN status = ''paid'' THEN amount END) AS DECIMAL(10,2)) AS avg_payment_value,
+    ISNULL(SUM(CASE WHEN status = ''paid'' AND payment_date >= DATEFROMPARTS(YEAR(GETUTCDATE()), MONTH(GETUTCDATE()), 1) THEN amount ELSE 0 END), 0) AS current_month_revenue
+  FROM dbo.SUBSCRIPTIONPAYMENTS
+),
+activity_agg AS (
+  SELECT
+    COUNT(DISTINCT CASE WHEN [timestamp] >= DATEADD(DAY, -7, GETUTCDATE()) THEN user_id END) AS active_users_7d,
+    COUNT(DISTINCT CASE WHEN [timestamp] >= DATEADD(DAY, -30, GETUTCDATE()) THEN user_id END) AS active_users_30d
+  FROM dbo.USERACTIVITIES
+)
+SELECT
+  (SELECT COUNT(*) FROM dbo.USERS) AS total_users,
+  (SELECT COUNT(*) FROM dbo.USERS WHERE role = ''student'') AS total_students,
+  (SELECT COUNT(*) FROM dbo.USERS WHERE role = ''admin'') AS total_admins,
+  (SELECT COUNT(*) FROM dbo.TUITIONS)
+  + (SELECT COUNT(*) FROM dbo.MAIDS)
+  + (SELECT COUNT(*) FROM dbo.ROOMMATELISTINGS)
+  + (SELECT COUNT(*) FROM dbo.HOUSERENTLISTINGS)
+  + (SELECT COUNT(*) FROM dbo.MARKETPLACELISTINGS) AS total_listings,
+  (SELECT COUNT(*) FROM dbo.BOOKEDTUITIONS)
+  + (SELECT COUNT(*) FROM dbo.BOOKEDMAIDS)
+  + (SELECT COUNT(*) FROM dbo.BOOKEDROOMMATES) AS total_bookings,
+  (SELECT COUNT(*) FROM dbo.APPLIEDTUITIONS WHERE status = ''pending'')
+  + (SELECT COUNT(*) FROM dbo.APPLIEDMAIDS WHERE status = ''pending'')
+  + (SELECT COUNT(*) FROM dbo.APPLIEDROOMMATES WHERE status = ''pending'') AS pending_applications,
+  (SELECT COUNT(*) FROM dbo.TUITIONS WHERE status = ''Pending'')
+  + (SELECT COUNT(*) FROM dbo.MAIDS WHERE status = ''Pending'')
+  + (SELECT COUNT(*) FROM dbo.ROOMMATELISTINGS WHERE status = ''Pending'')
+  + (SELECT COUNT(*) FROM dbo.HOUSERENTLISTINGS WHERE status = ''Pending'')
+  + (SELECT COUNT(*) FROM dbo.MARKETPLACELISTINGS WHERE status = ''Pending'') AS pending_listing_reviews,
+  p.total_revenue,
+  p.paid_payment_count,
+  ISNULL(p.avg_payment_value, 0) AS avg_payment_value,
+  p.current_month_revenue,
+  a.active_users_7d,
+  a.active_users_30d
+FROM payment_agg p CROSS JOIN activity_agg a
+');
+
+IF OBJECT_ID('dbo.vw_student_dashboard', 'V') IS NOT NULL
+  DROP VIEW dbo.vw_student_dashboard;
+
+EXEC('CREATE VIEW dbo.vw_student_dashboard AS
+SELECT
+  u.user_id,
+  (SELECT COUNT(*) FROM dbo.APPLIEDTUITIONS atq WHERE atq.user_id = u.user_id)
+  + (SELECT COUNT(*) FROM dbo.APPLIEDMAIDS am WHERE am.user_id = u.user_id)
+  + (SELECT COUNT(*) FROM dbo.APPLIEDROOMMATES ar WHERE ar.user_id = u.user_id) AS total_applications,
+  (SELECT COUNT(*) FROM dbo.BOOKEDTUITIONS bt INNER JOIN dbo.APPLIEDTUITIONS atq ON atq.application_id = bt.application_id WHERE atq.user_id = u.user_id)
+  + (SELECT COUNT(*) FROM dbo.BOOKEDMAIDS bm INNER JOIN dbo.APPLIEDMAIDS am ON am.application_id = bm.application_id WHERE am.user_id = u.user_id)
+  + (SELECT COUNT(*) FROM dbo.BOOKEDROOMMATES br INNER JOIN dbo.APPLIEDROOMMATES ar ON ar.application_id = br.application_id WHERE ar.user_id = u.user_id) AS total_bookings,
+  (SELECT COUNT(*) FROM dbo.TUITIONS t WHERE t.user_id = u.user_id)
+  + (SELECT COUNT(*) FROM dbo.MAIDS m WHERE m.user_id = u.user_id)
+  + (SELECT COUNT(*) FROM dbo.ROOMMATELISTINGS r WHERE r.user_id = u.user_id)
+  + (SELECT COUNT(*) FROM dbo.HOUSERENTLISTINGS h WHERE h.user_id = u.user_id)
+  + (SELECT COUNT(*) FROM dbo.MARKETPLACELISTINGS mp WHERE mp.user_id = u.user_id) AS total_listings,
+  (SELECT ISNULL(SUM(sp.amount), 0) FROM dbo.SUBSCRIPTIONPAYMENTS sp WHERE sp.user_id = u.user_id AND sp.status = ''paid'') AS total_payments,
+  (SELECT COUNT(*) FROM dbo.APPLIEDTUITIONS a WHERE a.user_id = u.user_id AND a.status = ''pending'')
+  + (SELECT COUNT(*) FROM dbo.APPLIEDMAIDS a WHERE a.user_id = u.user_id AND a.status = ''pending'')
+  + (SELECT COUNT(*) FROM dbo.APPLIEDROOMMATES a WHERE a.user_id = u.user_id AND a.status = ''pending'') AS pending_applications,
+  (SELECT COUNT(*) FROM dbo.USERACTIVITIES ua WHERE ua.user_id = u.user_id AND ua.[timestamp] >= DATEADD(DAY, -30, GETUTCDATE())) AS activity_count_30d,
+  (SELECT MAX(ua.[timestamp]) FROM dbo.USERACTIVITIES ua WHERE ua.user_id = u.user_id) AS last_activity_at,
+  (SELECT ISNULL(SUM(sp.amount), 0) FROM dbo.SUBSCRIPTIONPAYMENTS sp WHERE sp.user_id = u.user_id AND sp.status = ''paid'' AND sp.payment_date >= DATEFROMPARTS(YEAR(GETUTCDATE()), MONTH(GETUTCDATE()), 1)) AS current_month_spend
+FROM dbo.USERS u
+WHERE u.role = ''student''
+');
+
+IF OBJECT_ID('dbo.sp_admin_review_listing', 'P') IS NOT NULL
+  DROP PROCEDURE dbo.sp_admin_review_listing;
+
+EXEC('CREATE PROCEDURE dbo.sp_admin_review_listing
+  @listing_type NVARCHAR(40),
+  @listing_id UNIQUEIDENTIFIER,
+  @decision NVARCHAR(40),
+  @admin_user_id UNIQUEIDENTIFIER
+AS
+BEGIN
+  SET NOCOUNT ON;
+  SET XACT_ABORT ON;
+
+  DECLARE @status NVARCHAR(30) = CASE WHEN LOWER(@decision) = ''approved'' THEN ''Approved'' ELSE ''Rejected'' END;
+  DECLARE @target_user_id UNIQUEIDENTIFIER = NULL;
+  DECLARE @rows INT = 0;
+  CREATE TABLE #tmp_owner (user_id UNIQUEIDENTIFIER);
+
+  BEGIN TRY
+    BEGIN TRANSACTION;
+
+    IF LOWER(@listing_type) = ''tuition''
+    BEGIN
+      UPDATE dbo.TUITIONS
+      SET status = @status
+      OUTPUT INSERTED.user_id INTO #tmp_owner(user_id)
+      WHERE tuition_id = @listing_id;
+      SET @rows = @@ROWCOUNT;
+    END
+    ELSE IF LOWER(@listing_type) = ''maid''
+    BEGIN
+      UPDATE dbo.MAIDS
+      SET status = @status
+      OUTPUT INSERTED.user_id INTO #tmp_owner(user_id)
+      WHERE maid_id = @listing_id;
+      SET @rows = @@ROWCOUNT;
+    END
+    ELSE IF LOWER(@listing_type) = ''roommate''
+    BEGIN
+      UPDATE dbo.ROOMMATELISTINGS
+      SET status = @status
+      OUTPUT INSERTED.user_id INTO #tmp_owner(user_id)
+      WHERE listing_id = @listing_id;
+      SET @rows = @@ROWCOUNT;
+    END
+    ELSE IF LOWER(@listing_type) = ''houserent''
+    BEGIN
+      UPDATE dbo.HOUSERENTLISTINGS
+      SET status = @status
+      OUTPUT INSERTED.user_id INTO #tmp_owner(user_id)
+      WHERE house_id = @listing_id;
+      SET @rows = @@ROWCOUNT;
+    END
+    ELSE IF LOWER(@listing_type) = ''marketplace''
+    BEGIN
+      UPDATE dbo.MARKETPLACELISTINGS
+      SET status = @status
+      OUTPUT INSERTED.user_id INTO #tmp_owner(user_id)
+      WHERE item_id = @listing_id;
+      SET @rows = @@ROWCOUNT;
+    END
+    ELSE
+      THROW 50010, ''Unsupported listing type'', 1;
+
+    SELECT TOP 1 @target_user_id = user_id FROM #tmp_owner;
+
+    IF @rows = 0
+      THROW 50011, ''Listing not found'', 1;
+
+    INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id, activity_description)
+    VALUES
+      (@admin_user_id, CONCAT(''admin_review_'', LOWER(@listing_type), ''_'', LOWER(@decision)), ''LISTING_REVIEW'', @listing_id, CONCAT(''Admin decision: '', @status)),
+      (@target_user_id, CONCAT(''listing_'', LOWER(@decision)), UPPER(@listing_type), @listing_id, CONCAT(''Your listing was '', @status));
+
+    COMMIT TRANSACTION;
+
+    SELECT
+      CAST(0 AS INT) AS status_code,
+      ''review_completed'' AS status_message,
+      @listing_type AS listing_type,
+      @listing_id AS listing_id,
+      @status AS updated_status;
+  END TRY
+  BEGIN CATCH
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+    SELECT CAST(ERROR_NUMBER() AS INT) AS status_code, ERROR_MESSAGE() AS status_message;
+  END CATCH
+END
+');
+
+IF OBJECT_ID('dbo.sp_student_subscription_payment', 'P') IS NOT NULL
+  DROP PROCEDURE dbo.sp_student_subscription_payment;
+
+EXEC('CREATE PROCEDURE dbo.sp_student_subscription_payment
+  @p_user_id UNIQUEIDENTIFIER,
+  @p_amount DECIMAL(10,2),
+  @p_payment_ref NVARCHAR(50) = NULL
+AS
+BEGIN
+  SET NOCOUNT ON;
+  SET XACT_ABORT ON;
+
+  DECLARE @new_payment_id UNIQUEIDENTIFIER;
+
+  BEGIN TRY
+    BEGIN TRANSACTION;
+
+    IF @p_amount <= 0
+      THROW 50021, ''Payment amount must be positive'', 1;
+
+    INSERT INTO dbo.SUBSCRIPTIONPAYMENTS (user_id, amount, status, payment_ref)
+    VALUES (@p_user_id, @p_amount, ''pending'', @p_payment_ref);
+
+    SELECT TOP 1 @new_payment_id = payment_id
+    FROM dbo.SUBSCRIPTIONPAYMENTS
+    WHERE user_id = @p_user_id
+    ORDER BY payment_date DESC;
+
+    UPDATE dbo.SUBSCRIPTIONPAYMENTS
+    SET status = ''paid''
+    WHERE payment_id = @new_payment_id;
+
+    UPDATE dbo.USERS
+    SET subscription_active = 1
+    WHERE user_id = @p_user_id;
+
+    INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id, activity_description)
+    VALUES (@p_user_id, ''subscription_paid'', ''SUBSCRIPTIONPAYMENTS'', @new_payment_id, ''Subscription payment completed and activated'');
+
+    COMMIT TRANSACTION;
+
+    SELECT CAST(0 AS INT) AS status_code, ''payment_processed'' AS status_message, @new_payment_id AS payment_id;
+  END TRY
+  BEGIN CATCH
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+    SELECT CAST(ERROR_NUMBER() AS INT) AS status_code, ERROR_MESSAGE() AS status_message, CAST(NULL AS UNIQUEIDENTIFIER) AS payment_id;
+  END CATCH
+END
+');
+
+IF OBJECT_ID('dbo.sp_submit_tuition_application', 'P') IS NOT NULL
+  DROP PROCEDURE dbo.sp_submit_tuition_application;
+
+EXEC('CREATE PROCEDURE dbo.sp_submit_tuition_application
+  @p_user_id UNIQUEIDENTIFIER,
+  @p_tuition_id UNIQUEIDENTIFIER
+AS
+BEGIN
+  SET NOCOUNT ON;
+  SET XACT_ABORT ON;
+
+  DECLARE @application_id UNIQUEIDENTIFIER;
+  DECLARE @owner_id UNIQUEIDENTIFIER;
+
+  BEGIN TRY
+    BEGIN TRANSACTION;
+
+    SELECT @owner_id = t.user_id
+    FROM dbo.TUITIONS t
+    WHERE t.tuition_id = @p_tuition_id
+      AND t.status IN (''Approved'', ''approved'', ''open'');
+
+    IF @owner_id IS NULL
+      THROW 50031, ''Tuition is not available for application'', 1;
+
+    IF @owner_id = @p_user_id
+      THROW 50032, ''You cannot apply to your own tuition listing'', 1;
+
+    IF EXISTS (
+      SELECT 1
+      FROM dbo.APPLIEDTUITIONS a
+      WHERE a.user_id = @p_user_id
+        AND a.tuition_id = @p_tuition_id
+        AND a.status IN (''pending'', ''approved'', ''booked'')
+    )
+      THROW 50033, ''Duplicate active tuition application is not allowed'', 1;
+
+    INSERT INTO dbo.APPLIEDTUITIONS (tuition_id, user_id, status)
+    VALUES (@p_tuition_id, @p_user_id, ''pending'');
+
+    SELECT TOP 1 @application_id = application_id
+    FROM dbo.APPLIEDTUITIONS
+    WHERE user_id = @p_user_id AND tuition_id = @p_tuition_id
+    ORDER BY applied_at DESC;
+
+    INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id, activity_description)
+    VALUES
+      (@p_user_id, ''apply_tuition'', ''APPLIEDTUITIONS'', @application_id, ''Student submitted tuition application''),
+      (@owner_id, ''tuition_received_application'', ''APPLIEDTUITIONS'', @application_id, ''A new tuition application was received'');
+
+    COMMIT TRANSACTION;
+
+    SELECT CAST(0 AS INT) AS status_code, ''application_submitted'' AS status_message, @application_id AS application_id;
+  END TRY
+  BEGIN CATCH
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+    SELECT CAST(ERROR_NUMBER() AS INT) AS status_code, ERROR_MESSAGE() AS status_message, CAST(NULL AS UNIQUEIDENTIFIER) AS application_id;
+  END CATCH
+END
+');
+
+IF OBJECT_ID('dbo.sp_process_maid_booking', 'P') IS NOT NULL
+  DROP PROCEDURE dbo.sp_process_maid_booking;
+
+EXEC('CREATE PROCEDURE dbo.sp_process_maid_booking
+  @p_application_id UNIQUEIDENTIFIER,
+  @p_actor_user_id UNIQUEIDENTIFIER
+AS
+BEGIN
+  SET NOCOUNT ON;
+  SET XACT_ABORT ON;
+
+  DECLARE @maid_id UNIQUEIDENTIFIER;
+  DECLARE @student_id UNIQUEIDENTIFIER;
+  DECLARE @booking_id UNIQUEIDENTIFIER;
+
+  BEGIN TRY
+    BEGIN TRANSACTION;
+
+    SELECT @maid_id = a.maid_id, @student_id = a.user_id
+    FROM dbo.APPLIEDMAIDS a
+    WHERE a.application_id = @p_application_id;
+
+    IF @maid_id IS NULL
+      THROW 50041, ''Maid application not found'', 1;
+
+    IF EXISTS (SELECT 1 FROM dbo.BOOKEDMAIDS WHERE application_id = @p_application_id)
+      THROW 50042, ''Booking already exists for this maid application'', 1;
+
+    INSERT INTO dbo.BOOKEDMAIDS (application_id)
+    VALUES (@p_application_id);
+
+    SELECT TOP 1 @booking_id = booking_id
+    FROM dbo.BOOKEDMAIDS
+    WHERE application_id = @p_application_id;
+
+    UPDATE dbo.APPLIEDMAIDS
+    SET status = ''booked''
+    WHERE application_id = @p_application_id;
+
+    UPDATE dbo.MAIDS
+    SET status = ''Booked''
+    WHERE maid_id = @maid_id;
+
+    INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id, activity_description)
+    VALUES
+      (@student_id, ''maid_booking_confirmed'', ''BOOKEDMAIDS'', @booking_id, ''Maid booking confirmed''),
+      (@p_actor_user_id, ''maid_booking_processed'', ''BOOKEDMAIDS'', @booking_id, ''Booking processed through stored procedure'');
+
+    COMMIT TRANSACTION;
+
+    SELECT CAST(0 AS INT) AS status_code, ''maid_booking_confirmed'' AS status_message, @booking_id AS booking_id;
+  END TRY
+  BEGIN CATCH
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+    SELECT CAST(ERROR_NUMBER() AS INT) AS status_code, ERROR_MESSAGE() AS status_message, CAST(NULL AS UNIQUEIDENTIFIER) AS booking_id;
+  END CATCH
+END
+');
+
+IF OBJECT_ID('dbo.sp_process_roommate_booking', 'P') IS NOT NULL
+  DROP PROCEDURE dbo.sp_process_roommate_booking;
+
+EXEC('CREATE PROCEDURE dbo.sp_process_roommate_booking
+  @p_application_id UNIQUEIDENTIFIER,
+  @p_actor_user_id UNIQUEIDENTIFIER
+AS
+BEGIN
+  SET NOCOUNT ON;
+  SET XACT_ABORT ON;
+
+  DECLARE @listing_id UNIQUEIDENTIFIER;
+  DECLARE @student_id UNIQUEIDENTIFIER;
+  DECLARE @booking_id UNIQUEIDENTIFIER;
+
+  BEGIN TRY
+    BEGIN TRANSACTION;
+
+    SELECT @listing_id = a.listing_id, @student_id = a.user_id
+    FROM dbo.APPLIEDROOMMATES a
+    WHERE a.application_id = @p_application_id;
+
+    IF @listing_id IS NULL
+      THROW 50051, ''Roommate application not found'', 1;
+
+    IF EXISTS (SELECT 1 FROM dbo.BOOKEDROOMMATES WHERE application_id = @p_application_id)
+      THROW 50052, ''Booking already exists for this roommate application'', 1;
+
+    INSERT INTO dbo.BOOKEDROOMMATES (application_id)
+    VALUES (@p_application_id);
+
+    SELECT TOP 1 @booking_id = booking_id
+    FROM dbo.BOOKEDROOMMATES
+    WHERE application_id = @p_application_id;
+
+    UPDATE dbo.APPLIEDROOMMATES
+    SET status = ''booked''
+    WHERE application_id = @p_application_id;
+
+    UPDATE dbo.ROOMMATELISTINGS
+    SET status = ''Booked''
+    WHERE listing_id = @listing_id;
+
+    INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id, activity_description)
+    VALUES
+      (@student_id, ''roommate_booking_confirmed'', ''BOOKEDROOMMATES'', @booking_id, ''Roommate booking confirmed''),
+      (@p_actor_user_id, ''roommate_booking_processed'', ''BOOKEDROOMMATES'', @booking_id, ''Booking processed through stored procedure'');
+
+    COMMIT TRANSACTION;
+
+    SELECT CAST(0 AS INT) AS status_code, ''roommate_booking_confirmed'' AS status_message, @booking_id AS booking_id;
+  END TRY
+  BEGIN CATCH
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+    SELECT CAST(ERROR_NUMBER() AS INT) AS status_code, ERROR_MESSAGE() AS status_message, CAST(NULL AS UNIQUEIDENTIFIER) AS booking_id;
+  END CATCH
+END
+');
+
+IF OBJECT_ID('dbo.sp_marketplace_purchase_transaction', 'P') IS NOT NULL
+  DROP PROCEDURE dbo.sp_marketplace_purchase_transaction;
+
+EXEC('CREATE PROCEDURE dbo.sp_marketplace_purchase_transaction
+  @p_item_id UNIQUEIDENTIFIER,
+  @p_buyer_user_id UNIQUEIDENTIFIER
+AS
+BEGIN
+  SET NOCOUNT ON;
+  SET XACT_ABORT ON;
+
+  DECLARE @seller_user_id UNIQUEIDENTIFIER;
+
+  BEGIN TRY
+    BEGIN TRANSACTION;
+
+    SELECT @seller_user_id = m.user_id
+    FROM dbo.MARKETPLACELISTINGS m
+    WHERE m.item_id = @p_item_id
+      AND m.status IN (''available'', ''Approved'', ''approved'');
+
+    IF @seller_user_id IS NULL
+      THROW 50061, ''Marketplace item is not available'', 1;
+
+    IF @seller_user_id = @p_buyer_user_id
+      THROW 50062, ''You cannot purchase your own item'', 1;
+
+    UPDATE dbo.MARKETPLACELISTINGS
+    SET status = ''sold''
+    WHERE item_id = @p_item_id;
+
+    INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id, activity_description)
+    VALUES
+      (@p_buyer_user_id, ''marketplace_purchase'', ''MARKETPLACELISTINGS'', @p_item_id, ''Student purchased marketplace item''),
+      (@seller_user_id, ''marketplace_item_sold'', ''MARKETPLACELISTINGS'', @p_item_id, ''Your marketplace item was sold'');
+
+    COMMIT TRANSACTION;
+
+    SELECT CAST(0 AS INT) AS status_code, ''marketplace_purchase_completed'' AS status_message, @p_item_id AS item_id;
+  END TRY
+  BEGIN CATCH
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+    SELECT CAST(ERROR_NUMBER() AS INT) AS status_code, ERROR_MESSAGE() AS status_message, CAST(NULL AS UNIQUEIDENTIFIER) AS item_id;
+  END CATCH
+END
+');
+
+IF OBJECT_ID('dbo.trg_tuitions_status_update', 'TR') IS NOT NULL
+  DROP TRIGGER dbo.trg_tuitions_status_update;
+
+EXEC('CREATE TRIGGER dbo.trg_tuitions_status_update
+ON dbo.TUITIONS
+AFTER UPDATE
+AS
+BEGIN
+  SET NOCOUNT ON;
+  INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id, activity_description)
+  SELECT i.user_id, ''listing_status_changed'', ''TUITIONS'', i.tuition_id,
+         CONCAT(''Status changed from '', d.status, '' to '', i.status)
+  FROM inserted i
+  INNER JOIN deleted d ON d.tuition_id = i.tuition_id
+  WHERE d.status = ''Pending'' AND i.status IN (''Approved'', ''Rejected'');
+END
+');
+
+IF OBJECT_ID('dbo.trg_maids_status_update', 'TR') IS NOT NULL
+  DROP TRIGGER dbo.trg_maids_status_update;
+
+EXEC('CREATE TRIGGER dbo.trg_maids_status_update
+ON dbo.MAIDS
+AFTER UPDATE
+AS
+BEGIN
+  SET NOCOUNT ON;
+  INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id, activity_description)
+  SELECT i.user_id, ''listing_status_changed'', ''MAIDS'', i.maid_id,
+         CONCAT(''Status changed from '', d.status, '' to '', i.status)
+  FROM inserted i
+  INNER JOIN deleted d ON d.maid_id = i.maid_id
+  WHERE d.status = ''Pending'' AND i.status IN (''Approved'', ''Rejected'');
+END
+');
+
+IF OBJECT_ID('dbo.trg_roommates_status_update', 'TR') IS NOT NULL
+  DROP TRIGGER dbo.trg_roommates_status_update;
+
+EXEC('CREATE TRIGGER dbo.trg_roommates_status_update
+ON dbo.ROOMMATELISTINGS
+AFTER UPDATE
+AS
+BEGIN
+  SET NOCOUNT ON;
+  INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id, activity_description)
+  SELECT i.user_id, ''listing_status_changed'', ''ROOMMATELISTINGS'', i.listing_id,
+         CONCAT(''Status changed from '', d.status, '' to '', i.status)
+  FROM inserted i
+  INNER JOIN deleted d ON d.listing_id = i.listing_id
+  WHERE d.status = ''Pending'' AND i.status IN (''Approved'', ''Rejected'');
+END
+');
+
+IF OBJECT_ID('dbo.trg_marketplace_status_update', 'TR') IS NOT NULL
+  DROP TRIGGER dbo.trg_marketplace_status_update;
+
+EXEC('CREATE TRIGGER dbo.trg_marketplace_status_update
+ON dbo.MARKETPLACELISTINGS
+AFTER UPDATE
+AS
+BEGIN
+  SET NOCOUNT ON;
+  INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id, activity_description)
+  SELECT i.user_id, ''listing_status_changed'', ''MARKETPLACELISTINGS'', i.item_id,
+         CONCAT(''Status changed from '', d.status, '' to '', i.status)
+  FROM inserted i
+  INNER JOIN deleted d ON d.item_id = i.item_id
+  WHERE d.status = ''Pending'' AND i.status IN (''Approved'', ''Rejected'');
+END
+');
+
+IF OBJECT_ID('dbo.trg_applied_tuition_status_update', 'TR') IS NOT NULL
+  DROP TRIGGER dbo.trg_applied_tuition_status_update;
+
+EXEC('CREATE TRIGGER dbo.trg_applied_tuition_status_update
+ON dbo.APPLIEDTUITIONS
+AFTER UPDATE
+AS
+BEGIN
+  SET NOCOUNT ON;
+  INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id, activity_description)
+  SELECT i.user_id, ''booking_status_changed'', ''APPLIEDTUITIONS'', i.application_id,
+         CONCAT(''Application status changed from '', d.status, '' to '', i.status)
+  FROM inserted i
+  INNER JOIN deleted d ON d.application_id = i.application_id
+  WHERE i.status <> d.status;
+END
+');
+
+IF OBJECT_ID('dbo.trg_applied_maid_status_update', 'TR') IS NOT NULL
+  DROP TRIGGER dbo.trg_applied_maid_status_update;
+
+EXEC('CREATE TRIGGER dbo.trg_applied_maid_status_update
+ON dbo.APPLIEDMAIDS
+AFTER UPDATE
+AS
+BEGIN
+  SET NOCOUNT ON;
+  INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id, activity_description)
+  SELECT i.user_id, ''booking_status_changed'', ''APPLIEDMAIDS'', i.application_id,
+         CONCAT(''Application status changed from '', d.status, '' to '', i.status)
+  FROM inserted i
+  INNER JOIN deleted d ON d.application_id = i.application_id
+  WHERE i.status <> d.status;
+END
+');
+
+IF OBJECT_ID('dbo.trg_applied_roommate_status_update', 'TR') IS NOT NULL
+  DROP TRIGGER dbo.trg_applied_roommate_status_update;
+
+EXEC('CREATE TRIGGER dbo.trg_applied_roommate_status_update
+ON dbo.APPLIEDROOMMATES
+AFTER UPDATE
+AS
+BEGIN
+  SET NOCOUNT ON;
+  INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id, activity_description)
+  SELECT i.user_id, ''booking_status_changed'', ''APPLIEDROOMMATES'', i.application_id,
+         CONCAT(''Application status changed from '', d.status, '' to '', i.status)
+  FROM inserted i
+  INNER JOIN deleted d ON d.application_id = i.application_id
+  WHERE i.status <> d.status;
+END
+');
+
+IF OBJECT_ID('dbo.trg_users_subscription_status_update', 'TR') IS NOT NULL
+  DROP TRIGGER dbo.trg_users_subscription_status_update;
+
+EXEC('CREATE TRIGGER dbo.trg_users_subscription_status_update
+ON dbo.USERS
+AFTER UPDATE
+AS
+BEGIN
+  SET NOCOUNT ON;
+  INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id, activity_description)
+  SELECT i.user_id,
+         CASE WHEN i.subscription_active = 1 THEN ''subscription_activated'' ELSE ''subscription_deactivated'' END,
+         ''USERS'',
+         i.user_id,
+         CASE WHEN i.subscription_active = 1 THEN ''Subscription was activated'' ELSE ''Subscription was deactivated'' END
+  FROM inserted i
+  INNER JOIN deleted d ON d.user_id = i.user_id
+  WHERE ISNULL(i.subscription_active, 0) <> ISNULL(d.subscription_active, 0);
+END
+');
+
+IF OBJECT_ID('dbo.trg_tuitions_delete_audit', 'TR') IS NOT NULL
+  DROP TRIGGER dbo.trg_tuitions_delete_audit;
+
+EXEC('CREATE TRIGGER dbo.trg_tuitions_delete_audit
+ON dbo.TUITIONS
+AFTER DELETE
+AS
+BEGIN
+  SET NOCOUNT ON;
+  INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id, activity_description)
+  SELECT d.user_id, ''listing_deleted'', ''TUITIONS'', d.tuition_id, ''Tuition listing deleted''
+  FROM deleted d;
+END
+');
+
+IF OBJECT_ID('dbo.trg_marketplace_delete_audit', 'TR') IS NOT NULL
+  DROP TRIGGER dbo.trg_marketplace_delete_audit;
+
+EXEC('CREATE TRIGGER dbo.trg_marketplace_delete_audit
+ON dbo.MARKETPLACELISTINGS
+AFTER DELETE
+AS
+BEGIN
+  SET NOCOUNT ON;
+  INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id, activity_description)
+  SELECT d.user_id, ''listing_deleted'', ''MARKETPLACELISTINGS'', d.item_id, ''Marketplace listing deleted''
+  FROM deleted d;
+END
+');
 `;
 
 let schemaReady = false;
@@ -191,6 +1166,19 @@ export async function ensureSchema() {
       INSERT INTO dbo.USERS (name, email, password_hash, role)
       VALUES ('System Admin', 'admin@bachelore.local', '$2a$10$m42Hi9dSi8NQ5ec7QcHBOecVaHPfKja4h74QE8XABdUB7jzQx8jYu', 'admin')
     `);
+  }
+
+  const objectPhaseMarker = "IF OBJECT_ID('dbo.vw_admin_dashboard_summary', 'V') IS NOT NULL";
+  const markerIndex = enhancementSql.indexOf(objectPhaseMarker);
+
+  if (markerIndex > 0) {
+    const baseEnhancementSql = enhancementSql.slice(0, markerIndex);
+    const objectEnhancementSql = enhancementSql.slice(markerIndex);
+
+    await pool.request().query(baseEnhancementSql);
+    await pool.request().query(objectEnhancementSql);
+  } else {
+    await pool.request().query(enhancementSql);
   }
 
   schemaReady = true;

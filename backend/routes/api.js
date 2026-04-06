@@ -55,6 +55,62 @@ function normalizeUser(row) {
   };
 }
 
+function pickFirst(existing, candidates) {
+  for (const key of candidates) {
+    if (existing.has(key)) return key;
+  }
+  return null;
+}
+
+async function resolveUsersSchema(pool) {
+  const cols = await pool
+    .request()
+    .query(`SELECT name FROM sys.columns WHERE object_id = OBJECT_ID('dbo.USERS')`);
+
+  const colSet = new Set((cols.recordset || []).map((r) => String(r.name || '')));
+
+  return {
+    idCol: pickFirst(colSet, ['user_id', 'UserId']),
+    nameCol: pickFirst(colSet, ['name', 'FullName', 'Name']),
+    emailCol: pickFirst(colSet, ['email', 'Email']),
+    passwordCol: pickFirst(colSet, ['password_hash', 'PasswordHash', 'Password']),
+    roleCol: pickFirst(colSet, ['role', 'Role']),
+    createdAtCol: pickFirst(colSet, ['created_at', 'CreatedAt']),
+    hasModernPasswordCol: colSet.has('password_hash'),
+  };
+}
+
+async function getDbUserByEmail(pool, email) {
+  const schema = await resolveUsersSchema(pool);
+  if (!schema.emailCol || !schema.passwordCol) {
+    throw new Error('USERS table is missing required email/password columns.');
+  }
+
+  const idExpr = schema.idCol ? `[${schema.idCol}]` : 'NULL';
+  const nameExpr = schema.nameCol ? `[${schema.nameCol}]` : 'NULL';
+  const roleExpr = schema.roleCol ? `[${schema.roleCol}]` : "'student'";
+  const createdExpr = schema.createdAtCol ? `[${schema.createdAtCol}]` : 'SYSUTCDATETIME()';
+
+  const query = `
+    SELECT TOP 1
+      ${idExpr} AS user_id,
+      ${nameExpr} AS name,
+      [${schema.emailCol}] AS email,
+      [${schema.passwordCol}] AS password_value,
+      ${roleExpr} AS role,
+      ${createdExpr} AS created_at
+    FROM dbo.USERS
+    WHERE LOWER(CAST([${schema.emailCol}] AS NVARCHAR(320))) = @email
+  `;
+
+  const result = await pool
+    .request()
+    .input('email', sql.NVarChar(320), String(email || '').toLowerCase())
+    .query(query);
+
+  return { row: result.recordset[0] || null, schema };
+}
+
 async function logActivity(poolOrTx, userId, actionType, referenceTable, referenceId = null) {
   if (!userId) return;
   const req = createRequest(poolOrTx)
@@ -187,17 +243,44 @@ router.post('/login', async (req, res) => {
     }
     try {
       const pool = await getPool();
-      const userResult = await pool
-        .request()
-        .input('email', sql.NVarChar(180), email.toLowerCase())
-        .query('SELECT user_id, name, email, password_hash, role, created_at FROM dbo.USERS WHERE email = @email');
-
-      const userRow = userResult.recordset[0];
+      const { row: userRow, schema } = await getDbUserByEmail(pool, email);
       if (!userRow) {
         return res.status(401).json({ msg: 'Invalid credentials' });
       }
 
-      const valid = await bcrypt.compare(password, userRow.password_hash);
+      const storedPassword = String(userRow.password_value || '');
+      let valid = false;
+
+      if (storedPassword.startsWith('$2')) {
+        valid = await bcrypt.compare(password, storedPassword);
+      } else if (storedPassword && password === storedPassword) {
+        valid = true;
+
+        // Auto-migrate legacy plaintext passwords after successful login.
+        try {
+          const newHash = await bcrypt.hash(password, 10);
+          if (schema.hasModernPasswordCol && userRow.user_id) {
+            await pool
+              .request()
+              .input('user_id', sql.UniqueIdentifier, userRow.user_id)
+              .input('password_hash', sql.NVarChar(255), newHash)
+              .query('UPDATE dbo.USERS SET password_hash = @password_hash WHERE user_id = @user_id');
+          } else if (schema.passwordCol && schema.emailCol) {
+            await pool
+              .request()
+              .input('email', sql.NVarChar(320), String(userRow.email || '').toLowerCase())
+              .input('password_hash', sql.NVarChar(255), newHash)
+              .query(`
+                UPDATE dbo.USERS
+                SET [${schema.passwordCol}] = @password_hash
+                WHERE LOWER(CAST([${schema.emailCol}] AS NVARCHAR(320))) = @email
+              `);
+          }
+        } catch {
+          // Non-fatal: login should still succeed even if migration update fails.
+        }
+      }
+
       if (!valid) {
         return res.status(401).json({ msg: 'Invalid credentials' });
       }

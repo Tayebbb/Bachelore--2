@@ -66,6 +66,15 @@ export function getUser(){
   }catch(e){ return null }
 }
 
+export function getUserRole(){
+  const user = getUser()
+  return String(user?.role || '').toLowerCase()
+}
+
+export function isStudentAuthed(){
+  return isAuthed() && getUserRole() === 'student'
+}
+
 export function getToken(){
   try{ return localStorage.getItem(TOKEN_KEY) || '' }catch(e){ return '' }
 }

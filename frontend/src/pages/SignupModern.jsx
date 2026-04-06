@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import axios from '../components/axios';
 import { Link, useNavigate } from 'react-router-dom';
+import { login as authLogin } from '../lib/auth';
 
 export default function SignupModern() {
   const navigate = useNavigate();
@@ -23,7 +25,7 @@ export default function SignupModern() {
     if (step === 1) {
       setStep(2);
     } else {
-      navigate('/home');
+      navigate('/student/dashboard');
     }
   };
 
@@ -97,7 +99,31 @@ export default function SignupModern() {
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit}>
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (step === 1) {
+              setStep(2);
+              return;
+            }
+
+            try {
+              const payload = {
+                name: formData.fullName,
+                email: formData.email,
+                phone: formData.phone,
+                password: formData.password,
+              };
+              const { data } = await axios.post('/api/signup', payload);
+              if (data?.user) {
+                authLogin(data.user)
+                navigate('/student/dashboard', { replace: true });
+              }
+            } catch {
+              // keep the form visible; backend error handling will surface elsewhere if needed
+            }
+          }}
+        >
           {step === 1 ? (
             <>
               <div className="form-group">

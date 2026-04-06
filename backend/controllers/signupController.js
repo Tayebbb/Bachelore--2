@@ -1,48 +1,119 @@
 import bcrypt from 'bcryptjs';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { User } from '../db/models.js';
 import { normalizeEmail } from '../utils/auth.js';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const LOCAL_USERS_FILE = path.join(__dirname, '..', 'db', 'local-users.json');
+
+async function readLocalUsers() {
+  try {
+    const raw = await fs.readFile(LOCAL_USERS_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeLocalUsers(users) {
+  await fs.writeFile(LOCAL_USERS_FILE, JSON.stringify(users, null, 2), 'utf8');
+}
+
 export const signup = async (req, res) => {
   try {
-    const { fullName, email, password, university, year, semester, eduEmail, phone } = req.body;
-    console.log('Signup payload received:', { fullName, email, university, year, semester, eduEmail });
+    const { name, fullName, email, phone, password } = req.body;
 
-    // Check all required fields
-    if (!fullName || !email || !password || !university || !year || !semester || !eduEmail || !phone) {
-      return res.status(400).json({ msg: "All fields are required." });
+    const trimmedName = String(name || fullName || '').trim();
+    const trimmedEmail = normalizeEmail(email);
+    const trimmedPhone = String(phone || '').trim();
+    const rawPassword = String(password || '');
+
+    if (typeof name !== 'string' && typeof fullName !== 'string') {
+      return res.status(400).json({ message: 'Name is required' });
     }
 
-    // Password strength: min 8 chars, 1 uppercase, 1 lowercase, 1 number, 1 special char
-    const strongPassword = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]).{8,}$/;
-    if (!strongPassword.test(password)) {
-      return res.status(400).json({ msg: "Password must be at least 8 characters and include uppercase, lowercase, number, and special character." });
+    if (trimmedName.length < 2) {
+      return res.status(400).json({ message: 'Name must be at least 2 characters long' });
     }
 
-    // Validate eduEmail (must be .edu or .ac or .edu.bd, etc.)
-    const eduEmailPattern = /@(.*\.)?(edu|ac)(\.(bd|com|org|net))?$/i;
-    if (!eduEmailPattern.test(eduEmail)) {
-      return res.status(400).json({ msg: "Please provide a valid educational email address." });
+    if (!trimmedEmail) {
+      return res.status(400).json({ message: 'Email is required' });
     }
 
-    const normalizedEmail = normalizeEmail(email);
-    const existingUser = await User.findOne({ where: { Email: normalizedEmail } });
-    if (existingUser) return res.status(400).json({ msg: "User already exists" });
+    const austEmailPattern = /^[^\s@]+@aust\.edu$/i;
+    if (!austEmailPattern.test(trimmedEmail)) {
+      return res.status(400).json({ message: 'Only AUST email is allowed (example@aust.edu)' });
+    }
 
-    const hashed = await bcrypt.hash(password, 10);
+    if (!trimmedPhone) {
+      return res.status(400).json({ message: 'Phone is required' });
+    }
+
+    if (!/^\d{10,15}$/.test(trimmedPhone)) {
+      return res.status(400).json({ message: 'Phone must contain only digits and be 10 to 15 characters long' });
+    }
+
+    if (!rawPassword) {
+      return res.status(400).json({ message: 'Password is required' });
+    }
+
+    if (rawPassword.length < 8) {
+      return res.status(400).json({ message: 'Password must be at least 8 characters long' });
+    }
+
+    const existingUser = await User.findOne({ where: { email: trimmedEmail } });
+    if (existingUser) {
+      return res.status(400).json({ message: 'User already exists' });
+    }
+
+    const localUsers = await readLocalUsers();
+    const localDuplicate = localUsers.some((user) => normalizeEmail(user?.email) === trimmedEmail);
+    if (localDuplicate) {
+      return res.status(400).json({ message: 'User already exists' });
+    }
+
+    const hashed = await bcrypt.hash(rawPassword, 10);
 
     const saved = await User.create({
-      FullName: fullName,
-      Email: normalizedEmail,
-      Password: hashed,
-      University: university,
-      Year: year,
-      Semester: semester,
-      EduEmail: eduEmail,
-      Phone: phone,
+      name: trimmedName,
+      email: trimmedEmail,
+      password_hash: hashed,
+      role: 'student',
     });
-    console.log('User saved:', { id: saved.UserId, email: saved.Email });
-    res.status(201).json({ msg: 'User registered successfully', user: { id: saved.UserId, email: saved.Email } });
+
+    localUsers.push({
+      user_id: saved.user_id,
+      name: trimmedName,
+      email: trimmedEmail,
+      password_hash: hashed,
+      role: 'student',
+      created_at: new Date().toISOString(),
+      profile: {
+        phone: trimmedPhone,
+        university: null,
+        year: null,
+        semester: null,
+        eduEmail: trimmedEmail,
+      },
+    });
+
+    await writeLocalUsers(localUsers);
+
+    return res.status(201).json({
+      message: 'User registered successfully',
+      user: {
+        id: saved.user_id,
+        name: trimmedName,
+        email: trimmedEmail,
+        phone: trimmedPhone,
+        role: 'student',
+      },
+    });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ message: 'Server error', error: String(err.message || err) });
   }
 };

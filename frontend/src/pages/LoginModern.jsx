@@ -39,7 +39,8 @@ export default function LoginModern() {
         setStatus('success');
         const params = new URLSearchParams(location.search);
         const next = params.get('next');
-        navigate(next || '/home');
+        const fallback = data.user?.role === 'admin' ? '/admin/dashboard' : '/student/dashboard';
+        navigate(next || fallback);
       } else {
         setStatus('error');
         setError('Invalid credentials');
