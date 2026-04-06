@@ -55,11 +55,50 @@ router.get('/dashboard', async (req, res) => {
           ) x
           GROUP BY module
           HAVING COUNT(*) >= 0;
+
+          SELECT TOP 50 module, application_id, listing_title, status, applied_at
+          FROM (
+            SELECT
+              'tuition' AS module,
+              a.application_id,
+              CONCAT(t.subject, ' - ', t.location) AS listing_title,
+              a.status,
+              a.applied_at
+            FROM dbo.APPLIEDTUITIONS a
+            INNER JOIN dbo.TUITIONS t ON t.tuition_id = a.tuition_id
+            WHERE a.user_id = @user_id
+
+            UNION ALL
+
+            SELECT
+              'maid' AS module,
+              a.application_id,
+              CONCAT('Maid - ', m.location) AS listing_title,
+              a.status,
+              a.applied_at
+            FROM dbo.APPLIEDMAIDS a
+            INNER JOIN dbo.MAIDS m ON m.maid_id = a.maid_id
+            WHERE a.user_id = @user_id
+
+            UNION ALL
+
+            SELECT
+              'roommate' AS module,
+              a.application_id,
+              CONCAT('Roommate - ', r.location) AS listing_title,
+              a.status,
+              a.applied_at
+            FROM dbo.APPLIEDROOMMATES a
+            INNER JOIN dbo.ROOMMATELISTINGS r ON r.listing_id = a.listing_id
+            WHERE a.user_id = @user_id
+          ) req
+          ORDER BY applied_at DESC;
         `);
       return res.json({
         overview: result.recordsets?.[0]?.[0] || {},
         activitySummary: result.recordsets?.[1] || [],
         moduleApplications: result.recordsets?.[2] || [],
+        requestStatuses: result.recordsets?.[3] || [],
       });
     } catch {
       const result = await pool
@@ -104,12 +143,51 @@ router.get('/dashboard', async (req, res) => {
           ) x
           GROUP BY module
           HAVING COUNT(*) >= 0;
+
+          SELECT TOP 50 module, application_id, listing_title, status, applied_at
+          FROM (
+            SELECT
+              'tuition' AS module,
+              a.application_id,
+              CONCAT(t.subject, ' - ', t.location) AS listing_title,
+              a.status,
+              a.applied_at
+            FROM dbo.APPLIEDTUITIONS a
+            INNER JOIN dbo.TUITIONS t ON t.tuition_id = a.tuition_id
+            WHERE a.user_id = @user_id
+
+            UNION ALL
+
+            SELECT
+              'maid' AS module,
+              a.application_id,
+              CONCAT('Maid - ', m.location) AS listing_title,
+              a.status,
+              a.applied_at
+            FROM dbo.APPLIEDMAIDS a
+            INNER JOIN dbo.MAIDS m ON m.maid_id = a.maid_id
+            WHERE a.user_id = @user_id
+
+            UNION ALL
+
+            SELECT
+              'roommate' AS module,
+              a.application_id,
+              CONCAT('Roommate - ', r.location) AS listing_title,
+              a.status,
+              a.applied_at
+            FROM dbo.APPLIEDROOMMATES a
+            INNER JOIN dbo.ROOMMATELISTINGS r ON r.listing_id = a.listing_id
+            WHERE a.user_id = @user_id
+          ) req
+          ORDER BY applied_at DESC;
         `);
 
       return res.json({
         overview: result.recordsets?.[0]?.[0] || {},
         activitySummary: result.recordsets?.[1] || [],
         moduleApplications: result.recordsets?.[2] || [],
+        requestStatuses: result.recordsets?.[3] || [],
       });
     }
   } catch (error) {
@@ -203,7 +281,7 @@ router.get('/tuitions', async (_req, res) => {
       SELECT t.tuition_id, t.subject, t.salary, t.location, t.status, t.created_at, u.name AS owner_name
       FROM dbo.TUITIONS t
       INNER JOIN dbo.USERS u ON u.user_id = t.user_id
-      WHERE t.status IN ('Approved', 'approved', 'open')
+      WHERE LOWER(ISNULL(t.status, 'approved')) IN ('approved', 'open', 'pending', 'booked')
       ORDER BY t.created_at DESC;
     `);
     return res.json(result.recordset);
@@ -240,7 +318,7 @@ router.get('/maids', async (_req, res) => {
       SELECT m.maid_id, m.salary, m.location, m.availability, ISNULL(m.status, 'Approved') AS status, m.created_at, u.name AS owner_name
       FROM dbo.MAIDS m
       INNER JOIN dbo.USERS u ON u.user_id = m.user_id
-      WHERE ISNULL(m.status, 'Approved') IN ('Approved', 'approved', 'open')
+      WHERE LOWER(ISNULL(m.status, 'approved')) IN ('approved', 'open', 'pending', 'booked')
       ORDER BY m.created_at DESC;
     `);
 
@@ -280,7 +358,7 @@ router.get('/roommates', async (_req, res) => {
       SELECT r.listing_id, r.location, r.rent, r.preference, r.[type], ISNULL(r.status, 'Approved') AS status, r.created_at, u.name AS owner_name
       FROM dbo.ROOMMATELISTINGS r
       INNER JOIN dbo.USERS u ON u.user_id = r.user_id
-      WHERE ISNULL(r.status, 'Approved') IN ('Approved', 'approved', 'open')
+      WHERE LOWER(ISNULL(r.status, 'approved')) IN ('approved', 'open', 'pending', 'booked')
       ORDER BY r.created_at DESC;
     `);
 
@@ -316,6 +394,43 @@ router.post('/roommates', async (req, res) => {
   }
 });
 
+router.post('/roommates/:listingId/apply', async (req, res) => {
+  try {
+    const userId = getAuthUserId(req);
+    const { listingId } = req.params;
+    const pool = await getPool();
+
+    const existing = await pool
+      .request()
+      .input('listing_id', sql.UniqueIdentifier, listingId)
+      .input('user_id', sql.UniqueIdentifier, userId)
+      .query(`
+        SELECT TOP 1 application_id
+        FROM dbo.APPLIEDROOMMATES
+        WHERE listing_id = @listing_id AND user_id = @user_id;
+      `);
+
+    if (existing.recordset[0]) {
+      return res.status(409).json({ msg: 'You already applied for this listing.' });
+    }
+
+    const result = await pool
+      .request()
+      .input('listing_id', sql.UniqueIdentifier, listingId)
+      .input('user_id', sql.UniqueIdentifier, userId)
+      .query(`
+        INSERT INTO dbo.APPLIEDROOMMATES (listing_id, user_id, status)
+        OUTPUT INSERTED.application_id, INSERTED.listing_id, INSERTED.user_id, INSERTED.status, INSERTED.applied_at
+        VALUES (@listing_id, @user_id, 'pending');
+      `);
+
+    await logActivity(pool, userId, 'applied_roommate', 'APPLIEDROOMMATES', result.recordset[0]?.application_id || null);
+    return res.status(201).json(result.recordset[0]);
+  } catch (error) {
+    return res.status(500).json({ msg: 'Failed to apply for roommate listing', error: String(error.message || error) });
+  }
+});
+
 router.get('/house-rent', async (_req, res) => {
   try {
     const pool = await getPool();
@@ -323,7 +438,7 @@ router.get('/house-rent', async (_req, res) => {
       SELECT h.house_id, h.location, h.rent, h.rooms, h.description, ISNULL(h.status, 'Approved') AS status, h.created_at, u.name AS owner_name
       FROM dbo.HOUSERENTLISTINGS h
       INNER JOIN dbo.USERS u ON u.user_id = h.user_id
-      WHERE ISNULL(h.status, 'Approved') IN ('Approved', 'approved', 'open')
+      WHERE LOWER(ISNULL(h.status, 'approved')) IN ('approved', 'open', 'pending', 'booked')
       ORDER BY h.created_at DESC;
     `);
 
@@ -364,7 +479,7 @@ router.get('/marketplace', async (_req, res) => {
       SELECT m.item_id, m.user_id, u.name AS seller_name, m.title, m.price, m.[condition], m.status, m.created_at
       FROM dbo.MARKETPLACELISTINGS m
       INNER JOIN dbo.USERS u ON u.user_id = m.user_id
-      WHERE m.status IN ('available', 'Approved', 'approved')
+      WHERE LOWER(ISNULL(m.status, 'available')) IN ('available', 'approved', 'pending')
       ORDER BY m.created_at DESC;
     `);
     return res.json(result.recordset);

@@ -69,7 +69,7 @@ export default function StudentMarketplacePage() {
                   {rows.map((r) => (
                     <tr key={r.item_id}>
                       <td>{r.title}</td><td>{r.price}</td><td>{r.condition}</td><td>{r.status}</td>
-                      <td><button type="button" className="panel-btn-sm success" onClick={() => buy(r.item_id)}>Buy</button></td>
+                      <td><button type="button" className="panel-btn-sm success" onClick={() => buy(r.item_id)}>Apply / Book</button></td>
                     </tr>
                   ))}
                   {rows.length === 0 && <tr><td colSpan={5} className="panel-empty">No marketplace data.</td></tr>}

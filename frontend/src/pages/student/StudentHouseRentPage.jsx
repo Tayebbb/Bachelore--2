@@ -38,7 +38,7 @@ export default function StudentHouseRentPage() {
               {rows.map((r) => (
                 <tr key={r.house_id}>
                   <td>{r.location}</td><td>{r.rent}</td><td>{r.rooms}</td><td>{r.status}</td>
-                  <td><button type="button" className="panel-btn-sm primary" onClick={() => contact(r.house_id)}>Contact Owner</button></td>
+                  <td><button type="button" className="panel-btn-sm primary" onClick={() => contact(r.house_id)}>Apply / Book</button></td>
                 </tr>
               ))}
               {rows.length === 0 && <tr><td colSpan={5} className="panel-empty">No approved house listings.</td></tr>}

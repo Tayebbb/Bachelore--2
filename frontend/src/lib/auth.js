@@ -5,11 +5,17 @@ const ADMIN_AUTH_KEY = 'bachelore_admin_auth'
 const EVENT = 'bachelore_auth_change'
 
 export function isAuthed(){
-  try{ return localStorage.getItem(AUTH_KEY) === '1' }catch(e){ return false }
+  try{
+    const authFlag = localStorage.getItem(AUTH_KEY) === '1'
+    const token = localStorage.getItem(TOKEN_KEY)
+    return authFlag && Boolean(token)
+  }catch(e){ return false }
 }
 
 export function isAdminAuthed(){
   try{
+    const token = getToken()
+    if (!token) return false
     if (localStorage.getItem(ADMIN_AUTH_KEY) === '1') return true
     const user = getUser()
     return Boolean(user && user.role === 'admin')

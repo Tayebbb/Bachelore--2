@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../components/axios.jsx';
+import PopupMessage from '../../components/PopupMessage.jsx';
 
 export default function StudentRoommatesPage() {
   const [rows, setRows] = useState([]);
   const [form, setForm] = useState({ location: '', rent: '', preference: '', type: 'host' });
+  const [popup, setPopup] = useState({ show: false, message: '' });
 
   const load = async () => {
     try {
@@ -23,14 +25,26 @@ export default function StudentRoommatesPage() {
     try {
       await api.post('/api/student/roommates', form);
       setForm({ location: '', rent: '', preference: '', type: 'host' });
+      setPopup({ show: true, message: 'Listing created successfully!' });
       load();
     } catch {
-      // ignore
+      setPopup({ show: true, message: 'Failed to create listing.' });
+    }
+  };
+
+  const apply = async (listingId) => {
+    try {
+      await api.post(`/api/student/roommates/${listingId}/apply`);
+      setPopup({ show: true, message: 'Request submitted for approval!' });
+      load();
+    } catch {
+      setPopup({ show: true, message: 'Failed to submit request.' });
     }
   };
 
   return (
     <div className="panel-page">
+      <PopupMessage message={popup.message} show={popup.show} onClose={() => setPopup({ ...popup, show: false })} />
       <header className="panel-page-header">
         <h2 className="panel-page-title">Roommate Finder</h2>
         <p className="panel-page-subtitle">Create listings and explore available roommate opportunities.</p>
@@ -51,10 +65,28 @@ export default function StudentRoommatesPage() {
           <div className="panel-block">
             <div className="panel-table-wrap">
               <table className="table-modern">
-                <thead><tr><th>Location</th><th>Rent</th><th>Type</th><th>Status</th></tr></thead>
+                <thead><tr><th>Location</th><th>Rent</th><th>Type</th><th>Status</th><th /></tr></thead>
                 <tbody>
-                  {rows.map((r) => <tr key={r.listing_id}><td>{r.location}</td><td>{r.rent}</td><td>{r.type}</td><td>{r.status}</td></tr>)}
-                  {rows.length === 0 && <tr><td colSpan={4} className="panel-empty">No roommate listings available.</td></tr>}
+                  {rows.map((r) => (
+                    <tr key={r.listing_id}>
+                      <td>{r.location}</td>
+                      <td>{r.rent}</td>
+                      <td>{r.type}</td>
+                      <td>{r.status}</td>
+                      <td>
+                        {String(r.status).toLowerCase() === 'pending' || String(r.status).toLowerCase() === 'applied' ? (
+                          <button type="button" className="panel-btn-sm" style={{ background: '#ccc', color: '#888', cursor: 'not-allowed', opacity: 0.7 }} disabled>
+                            Applied
+                          </button>
+                        ) : (
+                          <button type="button" className="panel-btn-sm primary" onClick={() => apply(r.listing_id)}>
+                            Apply / Book
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {rows.length === 0 && <tr><td colSpan={5} className="panel-empty">No roommate listings available.</td></tr>}
                 </tbody>
               </table>
             </div>

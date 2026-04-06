@@ -3,13 +3,19 @@ import api from '../../components/axios.jsx';
 
 export default function AdminListingsPage() {
   const [listings, setListings] = useState([]);
+  const [applications, setApplications] = useState([]);
 
   const load = async () => {
     try {
-      const { data } = await api.get('/api/admin/listings/pending');
-      setListings(Array.isArray(data) ? data : []);
+      const [pendingRes, appsRes] = await Promise.all([
+        api.get('/api/admin/listings/pending'),
+        api.get('/api/admin/applications'),
+      ]);
+      setListings(Array.isArray(pendingRes.data) ? pendingRes.data : []);
+      setApplications(Array.isArray(appsRes.data) ? appsRes.data : []);
     } catch {
       setListings([]);
+      setApplications([]);
     }
   };
 
@@ -22,6 +28,17 @@ export default function AdminListingsPage() {
       await api.post('/api/admin/listings/review', {
         listingType: listing.listing_type,
         listingId: listing.listing_id,
+        decision,
+      });
+      load();
+    } catch {
+      // ignore for now
+    }
+  };
+
+  const reviewApplication = async (application, decision) => {
+    try {
+      await api.post(`/api/admin/applications/${application.module}/${application.application_id}/review`, {
         decision,
       });
       load();
@@ -70,6 +87,46 @@ export default function AdminListingsPage() {
               </tbody>
             </table>
           </div>
+      </div>
+
+      <div className="panel-block" style={{ marginTop: 20 }}>
+        <h5 className="panel-block-title">Application Requests</h5>
+        <div className="panel-table-wrap">
+          <table className="table-modern">
+            <thead>
+              <tr>
+                <th>Module</th>
+                <th>Applicant Name</th>
+                <th>Email</th>
+                <th>Number</th>
+                <th>Listing</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {applications.map((row) => (
+                <tr key={`${row.module}-${row.application_id}`}>
+                  <td>{row.module}</td>
+                  <td>{row.applicant_name}</td>
+                  <td>{row.applicant_email}</td>
+                  <td>{row.applicant_contact || '-'}</td>
+                  <td>{row.listing_title}</td>
+                  <td>{row.status}</td>
+                  <td className="panel-actions">
+                    <button type="button" className="panel-btn-sm success" onClick={() => reviewApplication(row, 'approved')}>Approve</button>
+                    <button type="button" className="panel-btn-sm danger" onClick={() => reviewApplication(row, 'rejected')}>Reject</button>
+                  </td>
+                </tr>
+              ))}
+              {applications.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="panel-empty">No application requests.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

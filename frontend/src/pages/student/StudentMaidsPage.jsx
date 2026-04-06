@@ -50,7 +50,7 @@ export default function StudentMaidsPage() {
                   <td>{row.salary}</td>
                   <td>{row.availability}</td>
                   <td>{row.status}</td>
-                  <td><button type="button" className="panel-btn-sm primary" onClick={() => apply(row.maid_id)}>Apply</button></td>
+                  <td><button type="button" className="panel-btn-sm primary" onClick={() => apply(row.maid_id)}>Apply / Book</button></td>
                 </tr>
               ))}
               {rows.length === 0 && <tr><td colSpan={5} className="panel-empty">No approved maid listing found.</td></tr>}

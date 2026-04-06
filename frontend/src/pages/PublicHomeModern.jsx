@@ -321,17 +321,23 @@ export default function PublicHomeModern() {
             className="surface-card"
             style={{
               background: 'linear-gradient(135deg, var(--bg-elevated) 0%, var(--bg-surface) 100%)',
-              padding: '40px 0',
             }}
           >
-            <div className="stats-row">
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gap: 48,
+                textAlign: 'center',
+              }}
+            >
               {[
                 { value: '10K+', label: 'Active Users' },
                 { value: '50+', label: 'Cities Covered' },
                 { value: '99%', label: 'Satisfaction Rate' },
                 { value: '24/7', label: 'Support Available' },
               ].map((stat) => (
-                <div key={stat.label} className="stat-col">
+                <div key={stat.label}>
                   <div
                     style={{
                       fontFamily: 'var(--font-display)',
@@ -353,14 +359,14 @@ export default function PublicHomeModern() {
 
       {/* FAQ Section */}
       <section className="section" style={{ background: 'var(--bg-primary)' }}>
-        <div className="container container-narrow" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          <div className="section-header" style={{ textAlign: 'center', width: '100%' }}>
+        <div className="container container-narrow">
+          <div className="section-header">
             <span className="section-label">FAQ</span>
             <h2 className="section-title">Common questions</h2>
           </div>
 
-          <div className="surface-card" style={{ width: '100%', maxWidth: 900, margin: '0 auto', padding: 0 }}>
-            <div className="accordion" style={{ width: '100%' }}>
+          <div className="surface-card" style={{ padding: '0 32px' }}>
+            <div className="accordion">
               {faqs.map((faq, index) => (
                 <AccordionItem
                   key={index}

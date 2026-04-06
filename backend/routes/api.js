@@ -190,6 +190,17 @@ router.post('/signup', async (req, res) => {
           VALUES (@name, @email, @password_hash, 'student')
         `);
 
+      if (phone) {
+        await pool
+          .request()
+          .input('user_id', sql.UniqueIdentifier, result.recordset[0]?.user_id)
+          .input('phone', sql.NVarChar(40), String(phone))
+          .query(`
+            IF COL_LENGTH('dbo.USERS', 'phone') IS NOT NULL
+              UPDATE dbo.USERS SET phone = @phone WHERE user_id = @user_id;
+          `);
+      }
+
       const user = normalizeUser(result.recordset[0]);
       await logActivity(pool, user.user_id, 'signup', 'USERS', user.user_id);
       return res.status(201).json({ msg: 'Signup successful', user });
@@ -285,9 +296,11 @@ router.post('/login', async (req, res) => {
         return res.status(401).json({ msg: 'Invalid credentials' });
       }
 
-      const token = jwt.sign({ user_id: userRow.user_id, role: userRow.role }, JWT_SECRET, {
-        expiresIn: '7d',
-      });
+      const token = jwt.sign(
+        { user_id: userRow.user_id, role: userRow.role || 'student' },
+        JWT_SECRET,
+        { expiresIn: '7d' }
+      );
 
       const user = normalizeUser(userRow);
       await logActivity(pool, user.user_id, 'login', 'USERS', user.user_id);

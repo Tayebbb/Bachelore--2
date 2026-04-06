@@ -349,6 +349,128 @@ router.get('/applications-bookings', async (_req, res) => {
 	}
 });
 
+router.get('/applications', async (_req, res) => {
+	try {
+		const pool = await getPool();
+		const result = await pool.request().query(`
+			SELECT TOP 500
+				'tuition' AS module,
+				a.application_id,
+				a.status,
+				a.applied_at,
+				a.tuition_id AS listing_id,
+				CONCAT(t.subject, ' - ', t.location) AS listing_title,
+				u.user_id AS applicant_user_id,
+				u.name AS applicant_name,
+				u.email AS applicant_email,
+				u.phone AS applicant_contact
+			FROM dbo.APPLIEDTUITIONS a
+			INNER JOIN dbo.TUITIONS t ON t.tuition_id = a.tuition_id
+			INNER JOIN dbo.USERS u ON u.user_id = a.user_id
+
+			UNION ALL
+
+			SELECT TOP 500
+				'maid' AS module,
+				a.application_id,
+				a.status,
+				a.applied_at,
+				a.maid_id AS listing_id,
+				CONCAT('Maid - ', m.location) AS listing_title,
+				u.user_id AS applicant_user_id,
+				u.name AS applicant_name,
+				u.email AS applicant_email,
+				u.phone AS applicant_contact
+			FROM dbo.APPLIEDMAIDS a
+			INNER JOIN dbo.MAIDS m ON m.maid_id = a.maid_id
+			INNER JOIN dbo.USERS u ON u.user_id = a.user_id
+
+			UNION ALL
+
+			SELECT TOP 500
+				'roommate' AS module,
+				a.application_id,
+				a.status,
+				a.applied_at,
+				a.listing_id AS listing_id,
+				CONCAT('Roommate - ', r.location) AS listing_title,
+				u.user_id AS applicant_user_id,
+				u.name AS applicant_name,
+				u.email AS applicant_email,
+				u.phone AS applicant_contact
+			FROM dbo.APPLIEDROOMMATES a
+			INNER JOIN dbo.ROOMMATELISTINGS r ON r.listing_id = a.listing_id
+			INNER JOIN dbo.USERS u ON u.user_id = a.user_id
+
+			ORDER BY applied_at DESC;
+		`);
+
+		return res.json(result.recordset);
+	} catch (error) {
+		return res.status(500).json({ msg: 'Failed to load applications', error: String(error.message || error) });
+	}
+});
+
+router.post('/applications/:module/:applicationId/review', async (req, res) => {
+	try {
+		const { module, applicationId } = req.params;
+		const decision = String(req.body.decision || '').toLowerCase();
+		if (!['approved', 'rejected', 'booked'].includes(decision)) {
+			return res.status(400).json({ msg: 'decision must be approved, rejected, or booked.' });
+		}
+
+		const target = {
+			tuition: { table: 'dbo.APPLIEDTUITIONS' },
+			maid: { table: 'dbo.APPLIEDMAIDS' },
+			roommate: { table: 'dbo.APPLIEDROOMMATES' },
+		}[String(module).toLowerCase()];
+
+		if (!target) {
+			return res.status(400).json({ msg: 'Unsupported module.' });
+		}
+
+		const pool = await getPool();
+		const actorId = getAuthUserId(req);
+		const tx = new sql.Transaction(pool);
+		await tx.begin();
+
+		try {
+			const updated = await createRequest(tx)
+				.input('application_id', sql.UniqueIdentifier, applicationId)
+				.input('status', sql.NVarChar(30), decision)
+				.query(`
+					UPDATE ${target.table}
+					SET status = @status
+					OUTPUT INSERTED.application_id, INSERTED.user_id, INSERTED.status, INSERTED.applied_at
+					WHERE application_id = @application_id;
+				`);
+
+			if (!updated.recordset[0]) {
+				await tx.rollback();
+				return res.status(404).json({ msg: 'Application not found.' });
+			}
+
+			await createRequest(tx)
+				.input('user_id', sql.UniqueIdentifier, actorId)
+				.input('action_type', sql.NVarChar(80), `admin_review_${module}_${decision}`)
+				.input('reference_table', sql.NVarChar(80), target.table.replace('dbo.', ''))
+				.input('reference_id', sql.UniqueIdentifier, applicationId)
+				.query(`
+					INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id)
+					VALUES (@user_id, @action_type, @reference_table, @reference_id);
+				`);
+
+			await tx.commit();
+			return res.json({ msg: 'Application reviewed successfully.', application: updated.recordset[0] });
+		} catch (err) {
+			if (tx._aborted !== true) await tx.rollback();
+			throw err;
+		}
+	} catch (error) {
+		return res.status(500).json({ msg: 'Failed to review application', error: String(error.message || error) });
+	}
+});
+
 router.get('/payments', async (_req, res) => {
 	try {
 		const pool = await getPool();

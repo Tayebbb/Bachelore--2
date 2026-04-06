@@ -200,9 +200,19 @@ BEGIN
   ALTER TABLE dbo.USERS ADD block_reason NVARCHAR(300) NULL;
 END;
 
+IF COL_LENGTH('dbo.USERS', 'phone') IS NULL
+BEGIN
+  ALTER TABLE dbo.USERS ADD phone NVARCHAR(40) NULL;
+END;
+
 IF COL_LENGTH('dbo.USERS', 'subscription_active') IS NULL
 BEGIN
   ALTER TABLE dbo.USERS ADD subscription_active BIT NOT NULL CONSTRAINT DF_USERS_SUB_ACTIVE DEFAULT (0);
+END;
+
+IF COL_LENGTH('dbo.SUBSCRIPTIONPAYMENTS', 'payment_ref') IS NULL
+BEGIN
+  ALTER TABLE dbo.SUBSCRIPTIONPAYMENTS ADD payment_ref NVARCHAR(50) NULL;
 END;
 
 IF COL_LENGTH('dbo.USERACTIVITIES', 'activity_description') IS NULL
@@ -1168,17 +1178,31 @@ export async function ensureSchema() {
     `);
   }
 
+  const strictSchemaEnhancement = String(process.env.STRICT_SCHEMA_ENHANCEMENT || 'false').toLowerCase() === 'true';
   const objectPhaseMarker = "IF OBJECT_ID('dbo.vw_admin_dashboard_summary', 'V') IS NOT NULL";
   const markerIndex = enhancementSql.indexOf(objectPhaseMarker);
+
+  const runEnhancementPhase = async (sqlText, phaseName) => {
+    try {
+      await pool.request().query(sqlText);
+    } catch (err) {
+      const message = err?.message || String(err);
+      if (strictSchemaEnhancement) {
+        throw err;
+      }
+      // Keep API startup resilient when optional constraints/indexes conflict with existing data.
+      console.warn(`Schema enhancement phase '${phaseName}' skipped due to: ${message}`);
+    }
+  };
 
   if (markerIndex > 0) {
     const baseEnhancementSql = enhancementSql.slice(0, markerIndex);
     const objectEnhancementSql = enhancementSql.slice(markerIndex);
 
-    await pool.request().query(baseEnhancementSql);
-    await pool.request().query(objectEnhancementSql);
+    await runEnhancementPhase(baseEnhancementSql, 'base');
+    await runEnhancementPhase(objectEnhancementSql, 'objects');
   } else {
-    await pool.request().query(enhancementSql);
+    await runEnhancementPhase(enhancementSql, 'full');
   }
 
   schemaReady = true;
