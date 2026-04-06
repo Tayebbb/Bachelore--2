@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../components/axios.jsx';
 import PopupMessage from '../../components/PopupMessage.jsx';
+import SubscriptionModal from '../../components/SubscriptionModal.jsx';
 
 export default function StudentRoommatesPage() {
   const [rows, setRows] = useState([]);
   const [form, setForm] = useState({ location: '', rent: '', preference: '', type: 'host' });
   const [popup, setPopup] = useState({ show: false, message: '' });
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
 
   const load = async () => {
     try {
@@ -13,6 +16,15 @@ export default function StudentRoommatesPage() {
       setRows(Array.isArray(data) ? data : []);
     } catch {
       setRows([]);
+    }
+    
+    // Fetch subscription status
+    try {
+      const { data } = await api.get('/api/student/dashboard');
+      setIsSubscribed(data?.isSubscribed || false);
+    } catch (err) {
+      console.error('Failed to fetch subscription status:', err);
+      setIsSubscribed(false);
     }
   };
 
@@ -22,6 +34,10 @@ export default function StudentRoommatesPage() {
 
   const createListing = async (e) => {
     e.preventDefault();
+    if (!isSubscribed) {
+      setPopup({ show: true, message: 'Subscribe to create listings!' });
+      return;
+    }
     try {
       await api.post('/api/student/roommates', form);
       setForm({ location: '', rent: '', preference: '', type: 'host' });
@@ -33,6 +49,10 @@ export default function StudentRoommatesPage() {
   };
 
   const apply = async (listingId) => {
+    if (!isSubscribed) {
+      setPopup({ show: true, message: 'Subscribe to apply for listings!' });
+      return;
+    }
     try {
       await api.post(`/api/student/roommates/${listingId}/apply`);
       setPopup({ show: true, message: 'Request submitted for approval!' });
@@ -45,19 +65,62 @@ export default function StudentRoommatesPage() {
   return (
     <div className="panel-page">
       <PopupMessage message={popup.message} show={popup.show} onClose={() => setPopup({ ...popup, show: false })} />
+      <SubscriptionModal 
+        show={showSubscriptionModal} 
+        onClose={() => setShowSubscriptionModal(false)}
+        onSuccess={() => {
+          setShowSubscriptionModal(false);
+          load();
+        }}
+      />
       <header className="panel-page-header">
         <h2 className="panel-page-title">Roommate Finder</h2>
         <p className="panel-page-subtitle">Create listings and explore available roommate opportunities.</p>
       </header>
+      {!isSubscribed && (
+        <div style={{
+          padding: '16px',
+          marginBottom: '20px',
+          borderRadius: '8px',
+          backgroundColor: '#f8d7da',
+          border: '1px solid #f5c6cb',
+          color: '#721c24'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', justifyContent: 'space-between' }}>
+            <div>
+              <strong><i className="bi bi-lock-fill" style={{ marginRight: '8px' }} />Features Locked</strong>
+              <p style={{ margin: '4px 0 0 0', fontSize: '0.95em' }}>Subscribe to create listings and apply for opportunities.</p>
+            </div>
+            <button
+              onClick={() => setShowSubscriptionModal(true)}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: '#dc3545',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                fontSize: '0.9em',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              Subscribe
+            </button>
+          </div>
+        </div>
+      )}
       <div className="panel-split panel-split-5-7">
         <div>
           <div className="panel-block">
               <h5 className="panel-block-title">Create Host Listing</h5>
               <form onSubmit={createListing} className="panel-form">
-                <input className="app-input" placeholder="Location" value={form.location} onChange={(e) => setForm((p) => ({ ...p, location: e.target.value }))} />
-                <input className="app-input" placeholder="Rent" value={form.rent} onChange={(e) => setForm((p) => ({ ...p, rent: e.target.value }))} />
-                <input className="app-input" placeholder="Preference" value={form.preference} onChange={(e) => setForm((p) => ({ ...p, preference: e.target.value }))} />
-                <button type="submit" className="btn-primary">Create Listing</button>
+                <input className="app-input" placeholder="Location" value={form.location} onChange={(e) => setForm((p) => ({ ...p, location: e.target.value }))} disabled={!isSubscribed} />
+                <input className="app-input" placeholder="Rent" value={form.rent} onChange={(e) => setForm((p) => ({ ...p, rent: e.target.value }))} disabled={!isSubscribed} />
+                <input className="app-input" placeholder="Preference" value={form.preference} onChange={(e) => setForm((p) => ({ ...p, preference: e.target.value }))} disabled={!isSubscribed} />
+                <button type="submit" className="btn-primary" disabled={!isSubscribed} style={{ opacity: isSubscribed ? 1 : 0.5, cursor: isSubscribed ? 'pointer' : 'not-allowed' }}>
+                  Create Listing
+                </button>
               </form>
           </div>
         </div>
@@ -74,7 +137,11 @@ export default function StudentRoommatesPage() {
                       <td>{r.type}</td>
                       <td>{r.status}</td>
                       <td>
-                        {String(r.status).toLowerCase() === 'pending' || String(r.status).toLowerCase() === 'applied' ? (
+                        {!isSubscribed ? (
+                          <button type="button" className="panel-btn-sm" style={{ background: '#ccc', color: '#888', cursor: 'not-allowed', opacity: 0.7 }} disabled>
+                            Locked
+                          </button>
+                        ) : r.userApplicationStatus && (String(r.userApplicationStatus).toLowerCase() === 'pending' || String(r.userApplicationStatus).toLowerCase() === 'applied') ? (
                           <button type="button" className="panel-btn-sm" style={{ background: '#ccc', color: '#888', cursor: 'not-allowed', opacity: 0.7 }} disabled>
                             Applied
                           </button>

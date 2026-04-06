@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../components/axios.jsx';
 import PopupMessage from '../../components/PopupMessage.jsx';
+import SubscriptionModal from '../../components/SubscriptionModal.jsx';
 
 export default function StudentTuitionPage() {
   const [rows, setRows] = useState([]);
   const [popup, setPopup] = useState({ show: false, message: '' });
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
 
   const load = async () => {
     try {
@@ -13,6 +16,15 @@ export default function StudentTuitionPage() {
     } catch {
       setRows([]);
     }
+    
+    // Fetch subscription status
+    try {
+      const { data } = await api.get('/api/student/dashboard');
+      setIsSubscribed(data?.isSubscribed || false);
+    } catch (err) {
+      console.error('Failed to fetch subscription status:', err);
+      setIsSubscribed(false);
+    }
   };
 
   useEffect(() => {
@@ -20,6 +32,10 @@ export default function StudentTuitionPage() {
   }, []);
 
   const apply = async (tuitionId) => {
+    if (!isSubscribed) {
+      setPopup({ show: true, message: 'Subscribe to apply for tuitions!' });
+      return;
+    }
     try {
       await api.post(`/api/student/tuitions/${tuitionId}/apply`);
       setPopup({ show: true, message: 'Request submitted for approval!' });
@@ -32,10 +48,51 @@ export default function StudentTuitionPage() {
   return (
     <div className="panel-page">
       <PopupMessage message={popup.message} show={popup.show} onClose={() => setPopup({ ...popup, show: false })} />
+      <SubscriptionModal 
+        show={showSubscriptionModal} 
+        onClose={() => setShowSubscriptionModal(false)}
+        onSuccess={() => {
+          setShowSubscriptionModal(false);
+          load();
+        }}
+      />
       <header className="panel-page-header">
         <h2 className="panel-page-title">Approved Tuitions</h2>
         <p className="panel-page-subtitle">Browse approved tuition posts and apply directly.</p>
       </header>
+      {!isSubscribed && (
+        <div style={{
+          padding: '16px',
+          marginBottom: '20px',
+          borderRadius: '8px',
+          backgroundColor: '#f8d7da',
+          border: '1px solid #f5c6cb',
+          color: '#721c24'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', justifyContent: 'space-between' }}>
+            <div>
+              <strong><i className="bi bi-lock-fill" style={{ marginRight: '8px' }} />Features Locked</strong>
+              <p style={{ margin: '4px 0 0 0', fontSize: '0.95em' }}>Subscribe to apply for tuitions.</p>
+            </div>
+            <button
+              onClick={() => setShowSubscriptionModal(true)}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: '#dc3545',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                fontSize: '0.9em',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              Subscribe
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="panel-block">
           <div className="panel-table-wrap">
@@ -57,7 +114,7 @@ export default function StudentTuitionPage() {
                     <td>{row.location}</td>
                     <td>{row.status}</td>
                     <td>
-                      {String(row.status).toLowerCase() === 'pending' || String(row.status).toLowerCase() === 'applied' ? (
+                      {row.userApplicationStatus && (String(row.userApplicationStatus).toLowerCase() === 'pending' || String(row.userApplicationStatus).toLowerCase() === 'applied') ? (
                         <button type="button" className="panel-btn-sm" style={{ background: '#ccc', color: '#888', cursor: 'not-allowed', opacity: 0.7 }} disabled>
                           Applied
                         </button>
@@ -76,8 +133,18 @@ export default function StudentTuitionPage() {
                 )}
               </tbody>
             </table>
-          </div>
-      </div>
-    </div>
-  );
-}
+                    <td>
+                      {!isSubscribed ? (
+                        <button type="button" className="panel-btn-sm" style={{ background: '#ccc', color: '#888', cursor: 'not-allowed', opacity: 0.7 }} disabled>
+                          Locked
+                        </button>
+                      ) : row.userApplicationStatus && (String(row.userApplicationStatus).toLowerCase() === 'pending' || String(row.userApplicationStatus).toLowerCase() === 'applied') ? (
+                        <button type="button" className="panel-btn-sm" style={{ background: '#ccc', color: '#888', cursor: 'not-allowed', opacity: 0.7 }} disabled>
+                          Applied
+                        </button>
+                      ) : (
+                        <button type="button" className="panel-btn-sm primary" onClick={() => apply(row.tuition_id)}>
+                          Apply / Book
+                        </button>
+                      )}
+                    </td>

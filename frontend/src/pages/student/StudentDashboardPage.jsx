@@ -1,11 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../components/axios.jsx';
 import { getUser } from '../../lib/auth';
+import SubscriptionModal from '../../components/SubscriptionModal.jsx';
 
 export default function StudentDashboardPage() {
   const [overview, setOverview] = useState(null);
   const [requestStatuses, setRequestStatuses] = useState([]);
+  const [myListings, setMyListings] = useState([]);
+  const [isSubscribed, setIsSubscribed] = useState(false);
   const [error, setError] = useState(null);
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const user = getUser();
 
   useEffect(() => {
@@ -14,11 +18,15 @@ export default function StudentDashboardPage() {
         const { data } = await api.get('/api/student/dashboard');
         setOverview(data?.overview || null);
         setRequestStatuses(Array.isArray(data?.requestStatuses) ? data.requestStatuses : []);
+        setMyListings(Array.isArray(data?.myListingsWithApprovedApplicants) ? data.myListingsWithApprovedApplicants : []);
+        setIsSubscribed(data?.isSubscribed || false);
         setError(null);
       } catch (err) {
         console.error('Dashboard load error:', err);
         setOverview(null);
         setRequestStatuses([]);
+        setMyListings([]);
+        setIsSubscribed(false);
         if (err.response?.status === 403) {
           setError('Access Denied: You do not have permission to view the student dashboard.');
         } else {
@@ -27,7 +35,7 @@ export default function StudentDashboardPage() {
       }
     };
     load();
-  }, []);
+  }, [showSubscriptionModal]);
 
   const cards = [
     { label: 'Applications', value: overview?.total_applications ?? 0 },
@@ -40,11 +48,49 @@ export default function StudentDashboardPage() {
   const pending = requestStatuses.filter(r => String(r.status || '').toLowerCase() === 'pending');
   const approved = requestStatuses.filter(r => String(r.status || '').toLowerCase() === 'approved');
 
+  const getListingTypeLabel = (type) => {
+    const labels = {
+      roommate: 'Roommate',
+      tuition: 'Tuition',
+      maid: 'Maid',
+      house: 'House Rent',
+      marketplace: 'Marketplace'
+    };
+    return labels[type] || type;
+  };
+
   return (
     <div className="panel-page">
+      <SubscriptionModal 
+        show={showSubscriptionModal} 
+        onClose={() => setShowSubscriptionModal(false)}
+        onSuccess={() => setShowSubscriptionModal(false)}
+      />
+
       <header className="panel-page-header">
-        <h2 className="panel-page-title">Welcome, {user?.name || 'Student'}</h2>
-        <p className="panel-page-subtitle">Here is your activity and progress overview.</p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h2 className="panel-page-title">Welcome, {user?.name || 'Student'}</h2>
+            <p className="panel-page-subtitle">Here is your activity and progress overview.</p>
+          </div>
+          {!isSubscribed && (
+            <button
+              onClick={() => setShowSubscriptionModal(true)}
+              style={{
+                padding: '10px 20px',
+                backgroundColor: '#28a745',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                fontSize: '0.95em'
+              }}
+            >
+              Subscribe Now
+            </button>
+          )}
+        </div>
       </header>
 
       {error ? (
@@ -57,6 +103,28 @@ export default function StudentDashboardPage() {
         </div>
       ) : (
         <>
+          {/* Subscription Status Alert */}
+          <div style={{
+            padding: '16px',
+            marginBottom: '20px',
+            borderRadius: '8px',
+            backgroundColor: isSubscribed ? '#d4edda' : '#f8d7da',
+            border: `1px solid ${isSubscribed ? '#c3e6cb' : '#f5c6cb'}`,
+            color: isSubscribed ? '#155724' : '#721c24'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <i className={`bi ${isSubscribed ? 'bi-check-circle-fill' : 'bi-exclamation-circle-fill'}`} style={{ fontSize: '1.5rem' }} />
+              <div>
+                <strong>{isSubscribed ? 'Subscription Active' : 'Subscription Inactive'}</strong>
+                <p style={{ margin: '4px 0 0 0', fontSize: '0.95em' }}>
+                  {isSubscribed 
+                    ? 'Your subscription is active and you have access to all features.' 
+                    : 'Upgrade to unlock premium features and post unlimited listings.'}
+                </p>
+              </div>
+            </div>
+          </div>
+
           <div className="panel-grid-cards">
             {cards.map((card) => (
               <div className="panel-metric-card" key={card.label}>
@@ -123,6 +191,80 @@ export default function StudentDashboardPage() {
                       <td colSpan={4} className="panel-empty">No approved requests.</td>
                     </tr>
                   )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* All Listings with Approved Applicants */}
+          <div className="panel-block" style={{ marginTop: 32 }}>
+            <h5 className="panel-block-title">My Listings & Approved Applicants</h5>
+            {!isSubscribed && myListings.length > 0 && (
+              <div style={{
+                padding: '12px 16px',
+                marginBottom: '16px',
+                borderRadius: '6px',
+                backgroundColor: '#fff3cd',
+                border: '1px solid #ffc107',
+                color: '#856404',
+                fontSize: '0.95em'
+              }}>
+                <i className="bi bi-lock-fill" style={{ marginRight: '8px' }} />
+                Your listings are locked. Subscribe to unlock and manage them.
+              </div>
+            )}
+            <div className="panel-table-wrap">
+              <table className="table-modern">
+                <thead>
+                  <tr>
+                    <th>Type</th>
+                    <th>Title / Location</th>
+                    <th>Price / Rent</th>
+                    <th>Status</th>
+                    <th>Approved Applicants</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {myListings.length === 0 && (
+                    <tr><td colSpan={5} className="panel-empty">No listings posted yet.</td></tr>
+                  )}
+                  {myListings.map(listing => (
+                    <tr key={`${listing.listing_type}-${listing.listing_id}`} style={!isSubscribed ? { opacity: 0.6 } : {}}>
+                      <td><strong>{getListingTypeLabel(listing.listing_type)}</strong></td>
+                      <td>
+                        {isSubscribed ? listing.location : (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <i className="bi bi-lock-fill" />
+                            <span style={{ textDecoration: 'line-through', color: '#999' }}>
+                              {listing.location}
+                            </span>
+                          </span>
+                        )}
+                      </td>
+                      <td>{listing.rent ? (typeof listing.rent === 'number' ? listing.rent.toLocaleString() : listing.rent) : '-'}</td>
+                      <td>{isSubscribed ? listing.status : 'Locked'}</td>
+                      <td>
+                        {isSubscribed ? (
+                          listing.approvedApplicants.length === 0 ? (
+                            <span style={{ color: '#aaa' }}>None</span>
+                          ) : (
+                            <ul style={{ margin: 0, padding: '0 0 0 20px', listStyle: 'disc' }}>
+                              {listing.approvedApplicants.map((app, idx) => (
+                                <li key={idx}>
+                                  <b>{app.applicant_name}</b> ({app.applicant_email})<br/>
+                                  <span style={{ fontSize: '0.85em', color: '#888' }}>
+                                    Approved: {app.applied_at ? new Date(app.applied_at).toLocaleString() : '-'}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          )
+                        ) : (
+                          <span style={{ color: '#aaa' }}>Locked</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>

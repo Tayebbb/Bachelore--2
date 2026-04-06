@@ -25,171 +25,199 @@ router.get('/dashboard', async (req, res) => {
     const userId = getAuthUserId(req);
     const pool = await getPool();
 
-    try {
-      const result = await pool
-        .request()
-        .input('user_id', sql.UniqueIdentifier, userId)
-        .query(`
-          SELECT * FROM dbo.vw_student_dashboard WHERE user_id = @user_id;
+    // Overview and request statuses
+    const result = await pool
+      .request()
+      .input('user_id', sql.UniqueIdentifier, userId)
+      .query(`
+        SELECT
+          @user_id AS user_id,
+          (SELECT COUNT(*) FROM dbo.APPLIEDTUITIONS WHERE user_id = @user_id) AS total_applications,
+          (SELECT COUNT(*) FROM dbo.TUITIONS WHERE user_id = @user_id)
+            + (SELECT COUNT(*) FROM dbo.ROOMMATELISTINGS WHERE user_id = @user_id) AS total_listings,
+          (SELECT ISNULL(SUM(amount), 0) FROM dbo.SUBSCRIPTIONPAYMENTS WHERE user_id = @user_id AND status = 'paid') AS total_payments;
 
-          SELECT action_type, COUNT(*) AS action_count
-          FROM dbo.USERACTIVITIES
-          WHERE user_id = @user_id
-          GROUP BY action_type
-          HAVING COUNT(*) >= 1
-          ORDER BY action_count DESC;
-
-          SELECT module, COUNT(*) AS application_count
-          FROM (
-            SELECT 'tuition' AS module, application_id
-            FROM dbo.APPLIEDTUITIONS
-            WHERE user_id = @user_id
-            UNION ALL
-            SELECT 'maid' AS module, application_id
-            FROM dbo.APPLIEDMAIDS
-            WHERE user_id = @user_id
-            UNION ALL
-            SELECT 'roommate' AS module, application_id
-            FROM dbo.APPLIEDROOMMATES
-            WHERE user_id = @user_id
-          ) x
-          GROUP BY module
-          HAVING COUNT(*) >= 0;
-
-          SELECT TOP 50 module, application_id, listing_title, status, applied_at
-          FROM (
-            SELECT
-              'tuition' AS module,
-              a.application_id,
-              CONCAT(t.subject, ' - ', t.location) AS listing_title,
-              a.status,
-              a.applied_at
-            FROM dbo.APPLIEDTUITIONS a
-            INNER JOIN dbo.TUITIONS t ON t.tuition_id = a.tuition_id
-            WHERE a.user_id = @user_id
-
-            UNION ALL
-
-            SELECT
-              'maid' AS module,
-              a.application_id,
-              CONCAT('Maid - ', m.location) AS listing_title,
-              a.status,
-              a.applied_at
-            FROM dbo.APPLIEDMAIDS a
-            INNER JOIN dbo.MAIDS m ON m.maid_id = a.maid_id
-            WHERE a.user_id = @user_id
-
-            UNION ALL
-
-            SELECT
-              'roommate' AS module,
-              a.application_id,
-              CONCAT('Roommate - ', r.location) AS listing_title,
-              a.status,
-              a.applied_at
-            FROM dbo.APPLIEDROOMMATES a
-            INNER JOIN dbo.ROOMMATELISTINGS r ON r.listing_id = a.listing_id
-            WHERE a.user_id = @user_id
-          ) req
-          ORDER BY applied_at DESC;
-        `);
-      return res.json({
-        overview: result.recordsets?.[0]?.[0] || {},
-        activitySummary: result.recordsets?.[1] || [],
-        moduleApplications: result.recordsets?.[2] || [],
-        requestStatuses: result.recordsets?.[3] || [],
-      });
-    } catch {
-      const result = await pool
-        .request()
-        .input('user_id', sql.UniqueIdentifier, userId)
-        .query(`
+        SELECT TOP 50 'roommate' AS module, application_id, listing_title, status, applied_at
+        FROM (
           SELECT
-            @user_id AS user_id,
-            (SELECT COUNT(*) FROM dbo.APPLIEDTUITIONS WHERE user_id = @user_id)
-              + (SELECT COUNT(*) FROM dbo.APPLIEDMAIDS WHERE user_id = @user_id)
-              + (SELECT COUNT(*) FROM dbo.APPLIEDROOMMATES WHERE user_id = @user_id) AS total_applications,
-            (SELECT COUNT(*) FROM dbo.BOOKEDTUITIONS bt INNER JOIN dbo.APPLIEDTUITIONS atq ON atq.application_id = bt.application_id WHERE atq.user_id = @user_id)
-              + (SELECT COUNT(*) FROM dbo.BOOKEDMAIDS bm INNER JOIN dbo.APPLIEDMAIDS am ON am.application_id = bm.application_id WHERE am.user_id = @user_id)
-              + (SELECT COUNT(*) FROM dbo.BOOKEDROOMMATES br INNER JOIN dbo.APPLIEDROOMMATES ar ON ar.application_id = br.application_id WHERE ar.user_id = @user_id) AS total_bookings,
-            (SELECT COUNT(*) FROM dbo.TUITIONS WHERE user_id = @user_id)
-              + (SELECT COUNT(*) FROM dbo.MAIDS WHERE user_id = @user_id)
-              + (SELECT COUNT(*) FROM dbo.ROOMMATELISTINGS WHERE user_id = @user_id)
-              + (SELECT COUNT(*) FROM dbo.HOUSERENTLISTINGS WHERE user_id = @user_id)
-              + (SELECT COUNT(*) FROM dbo.MARKETPLACELISTINGS WHERE user_id = @user_id) AS total_listings,
-            (SELECT ISNULL(SUM(amount), 0) FROM dbo.SUBSCRIPTIONPAYMENTS WHERE user_id = @user_id AND status = 'paid') AS total_payments;
+            a.application_id,
+            CONCAT('Roommate - ', r.location) AS listing_title,
+            a.status,
+            a.applied_at
+          FROM dbo.APPLIEDROOMMATES a
+          INNER JOIN dbo.ROOMMATELISTINGS r ON r.listing_id = a.listing_id
+          WHERE a.user_id = @user_id
+        ) req
+        ORDER BY applied_at DESC;
 
-          SELECT action_type, COUNT(*) AS action_count
-          FROM dbo.USERACTIVITIES
-          WHERE user_id = @user_id
-          GROUP BY action_type
-          HAVING COUNT(*) >= 1
-          ORDER BY action_count DESC;
+        SELECT TOP 1 
+          CASE 
+            WHEN status = 'paid' THEN 'active'
+            ELSE 'inactive'
+          END AS subscription_status
+        FROM dbo.SUBSCRIPTIONPAYMENTS
+        WHERE user_id = @user_id
+        ORDER BY payment_date DESC;
+      `);
 
-          SELECT module, COUNT(*) AS application_count
-          FROM (
-            SELECT 'tuition' AS module, application_id
-            FROM dbo.APPLIEDTUITIONS
-            WHERE user_id = @user_id
-            UNION ALL
-            SELECT 'maid' AS module, application_id
-            FROM dbo.APPLIEDMAIDS
-            WHERE user_id = @user_id
-            UNION ALL
-            SELECT 'roommate' AS module, application_id
-            FROM dbo.APPLIEDROOMMATES
-            WHERE user_id = @user_id
-          ) x
-          GROUP BY module
-          HAVING COUNT(*) >= 0;
+    // Fetch all user's listings with approved applicants
+    const myListings = [];
 
-          SELECT TOP 50 module, application_id, listing_title, status, applied_at
-          FROM (
-            SELECT
-              'tuition' AS module,
-              a.application_id,
-              CONCAT(t.subject, ' - ', t.location) AS listing_title,
-              a.status,
-              a.applied_at
-            FROM dbo.APPLIEDTUITIONS a
-            INNER JOIN dbo.TUITIONS t ON t.tuition_id = a.tuition_id
-            WHERE a.user_id = @user_id
-
-            UNION ALL
-
-            SELECT
-              'maid' AS module,
-              a.application_id,
-              CONCAT('Maid - ', m.location) AS listing_title,
-              a.status,
-              a.applied_at
-            FROM dbo.APPLIEDMAIDS a
-            INNER JOIN dbo.MAIDS m ON m.maid_id = a.maid_id
-            WHERE a.user_id = @user_id
-
-            UNION ALL
-
-            SELECT
-              'roommate' AS module,
-              a.application_id,
-              CONCAT('Roommate - ', r.location) AS listing_title,
-              a.status,
-              a.applied_at
-            FROM dbo.APPLIEDROOMMATES a
-            INNER JOIN dbo.ROOMMATELISTINGS r ON r.listing_id = a.listing_id
-            WHERE a.user_id = @user_id
-          ) req
-          ORDER BY applied_at DESC;
+    try {
+      // Roommate listings
+      const roommateResult = await pool.request()
+        .input('user_id', sql.UniqueIdentifier, userId)
+        .query(`
+          SELECT r.listing_id, r.location, r.rent, r.preference, r.[type], r.status, r.created_at, 'roommate' AS listing_type
+          FROM dbo.ROOMMATELISTINGS r
+          WHERE r.user_id = @user_id
         `);
 
-      return res.json({
-        overview: result.recordsets?.[0]?.[0] || {},
-        activitySummary: result.recordsets?.[1] || [],
-        moduleApplications: result.recordsets?.[2] || [],
-        requestStatuses: result.recordsets?.[3] || [],
-      });
+      if (roommateResult.recordset && Array.isArray(roommateResult.recordset)) {
+        for (const listing of roommateResult.recordset) {
+          const appResult = await pool.request()
+            .input('listing_id', sql.UniqueIdentifier, listing.listing_id)
+            .query(`
+              SELECT a.user_id, a.status, a.applied_at, u.name AS applicant_name, u.email AS applicant_email
+              FROM dbo.APPLIEDROOMMATES a
+              INNER JOIN dbo.USERS u ON u.user_id = a.user_id
+              WHERE a.status = 'Approved' AND a.listing_id = @listing_id
+            `);
+
+          myListings.push({
+            ...listing,
+            approvedApplicants: appResult.recordset || []
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching roommate listings:', err.message);
     }
+
+    try {
+      // Tuition listings
+      const tuitionResult = await pool.request()
+        .input('user_id', sql.UniqueIdentifier, userId)
+        .query(`
+          SELECT t.tuition_id AS listing_id, t.subject AS location, t.salary AS rent, NULL AS preference, 'tuition' AS [type], t.status, t.created_at, 'tuition' AS listing_type
+          FROM dbo.TUITIONS t
+          WHERE t.user_id = @user_id
+        `);
+
+      if (tuitionResult.recordset && Array.isArray(tuitionResult.recordset)) {
+        for (const listing of tuitionResult.recordset) {
+          const appResult = await pool.request()
+            .input('tuition_id', sql.UniqueIdentifier, listing.listing_id)
+            .query(`
+              SELECT a.user_id, a.status, a.applied_at, u.name AS applicant_name, u.email AS applicant_email
+              FROM dbo.APPLIEDTUITIONS a
+              INNER JOIN dbo.USERS u ON u.user_id = a.user_id
+              WHERE a.status = 'Approved' AND a.tuition_id = @tuition_id
+            `);
+
+          myListings.push({
+            ...listing,
+            approvedApplicants: appResult.recordset || []
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching tuition listings:', err.message);
+    }
+
+    try {
+      // Maid listings
+      const maidResult = await pool.request()
+        .input('user_id', sql.UniqueIdentifier, userId)
+        .query(`
+          SELECT m.maid_id AS listing_id, m.location, m.salary AS rent, NULL AS preference, 'maid' AS [type], ISNULL(m.status, 'Approved') AS status, m.created_at, 'maid' AS listing_type
+          FROM dbo.MAIDS m
+          WHERE m.user_id = @user_id
+        `);
+
+      if (maidResult.recordset && Array.isArray(maidResult.recordset)) {
+        for (const listing of maidResult.recordset) {
+          const appResult = await pool.request()
+            .input('maid_id', sql.UniqueIdentifier, listing.listing_id)
+            .query(`
+              SELECT a.user_id, a.status, a.applied_at, u.name AS applicant_name, u.email AS applicant_email
+              FROM dbo.APPLIEDMAIDS a
+              INNER JOIN dbo.USERS u ON u.user_id = a.user_id
+              WHERE a.status = 'Approved' AND a.maid_id = @maid_id
+            `);
+
+          myListings.push({
+            ...listing,
+            approvedApplicants: appResult.recordset || []
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching maid listings:', err.message);
+    }
+
+    try {
+      // House rent listings
+      const houseResult = await pool.request()
+        .input('user_id', sql.UniqueIdentifier, userId)
+        .query(`
+          SELECT h.house_id AS listing_id, h.location, h.rent, NULL AS preference, 'house' AS [type], ISNULL(h.status, 'Approved') AS status, h.created_at, 'house' AS listing_type
+          FROM dbo.HOUSERENTLISTINGS h
+          WHERE h.user_id = @user_id
+        `);
+
+      if (houseResult.recordset && Array.isArray(houseResult.recordset)) {
+        for (const listing of houseResult.recordset) {
+          const appResult = await pool.request()
+            .input('house_id', sql.UniqueIdentifier, listing.listing_id)
+            .query(`
+              SELECT a.user_id, a.status, a.created_at AS applied_at, u.name AS applicant_name, u.email AS applicant_email
+              FROM dbo.HOUSECONTACTS a
+              INNER JOIN dbo.USERS u ON u.user_id = a.user_id
+              WHERE a.house_id = @house_id
+            `);
+
+          myListings.push({
+            ...listing,
+            approvedApplicants: appResult.recordset || []
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching house rent listings:', err.message);
+    }
+
+    try {
+      // Marketplace listings
+      const marketplaceResult = await pool.request()
+        .input('user_id', sql.UniqueIdentifier, userId)
+        .query(`
+          SELECT m.item_id AS listing_id, m.title AS location, m.price AS rent, NULL AS preference, 'marketplace' AS [type], m.status, m.created_at, 'marketplace' AS listing_type
+          FROM dbo.MARKETPLACELISTINGS m
+          WHERE m.user_id = @user_id
+        `);
+
+      if (marketplaceResult.recordset && Array.isArray(marketplaceResult.recordset)) {
+        myListings.push(...marketplaceResult.recordset.map(listing => ({
+          ...listing,
+          approvedApplicants: []
+        })));
+      }
+    } catch (err) {
+      console.error('Error fetching marketplace listings:', err.message);
+    }
+
+    const overview = result.recordsets?.[0]?.[0] || {};
+    const requestStatuses = result.recordsets?.[1] || [];
+    const subscriptionData = result.recordsets?.[2]?.[0] || null;
+
+    return res.json({
+      overview,
+      requestStatuses,
+      subscriptionStatus: subscriptionData?.subscription_status || 'inactive',
+      isSubscribed: subscriptionData?.subscription_status === 'active',
+      myListingsWithApprovedApplicants: myListings,
+    });
   } catch (error) {
     return res.status(500).json({ msg: 'Failed to load student dashboard', error: String(error.message || error) });
   }
@@ -353,16 +381,36 @@ router.post('/maids/:maidId/apply', async (req, res) => {
 
 router.get('/roommates', async (_req, res) => {
   try {
+    const userId = getAuthUserId(_req);
     const pool = await getPool();
-    const result = await pool.request().query(`
+    // Get all listings
+    const listingsResult = await pool.request().query(`
       SELECT r.listing_id, r.location, r.rent, r.preference, r.[type], ISNULL(r.status, 'Approved') AS status, r.created_at, u.name AS owner_name
       FROM dbo.ROOMMATELISTINGS r
       INNER JOIN dbo.USERS u ON u.user_id = r.user_id
       WHERE LOWER(ISNULL(r.status, 'approved')) IN ('approved', 'open', 'pending', 'booked')
       ORDER BY r.created_at DESC;
     `);
+    const listings = listingsResult.recordset;
 
-    return res.json(result.recordset);
+    // Get all applications by this user
+    const appliedResult = await pool.request()
+      .input('user_id', sql.UniqueIdentifier, userId)
+      .query(`
+        SELECT listing_id, status FROM dbo.APPLIEDROOMMATES WHERE user_id = @user_id
+      `);
+    const appliedMap = {};
+    for (const row of appliedResult.recordset) {
+      appliedMap[row.listing_id] = row.status;
+    }
+
+    // Attach user-specific application status
+    const listingsWithUserStatus = listings.map(l => ({
+      ...l,
+      userApplicationStatus: appliedMap[l.listing_id] || null
+    }));
+
+    return res.json(listingsWithUserStatus);
   } catch (error) {
     return res.status(500).json({ msg: 'Failed to fetch roommate listings', error: String(error.message || error) });
   }
@@ -539,20 +587,35 @@ router.post('/subscription/pay', async (req, res) => {
     const userId = getAuthUserId(req);
     const amount = Number(req.body.amount || 99);
     const paymentRef = req.body.paymentRef || null;
-
     const pool = await getPool();
-    const procResult = await pool
-      .request()
-      .input('p_user_id', sql.UniqueIdentifier, userId)
-      .input('p_amount', sql.Decimal(10, 2), amount)
-      .input('p_payment_ref', sql.NVarChar(50), paymentRef)
-      .execute('dbo.sp_student_subscription_payment');
 
-    const payload = procResult.recordset?.[0] || {};
-    if (Number(payload.status_code) !== 0) {
-      return res.status(400).json(payload);
-    }
-    return res.status(201).json(payload);
+    // Insert subscription payment record
+    const paymentResult = await pool
+      .request()
+      .input('user_id', sql.UniqueIdentifier, userId)
+      .input('amount', sql.Decimal(10, 2), amount)
+      .input('status', sql.NVarChar(30), 'paid')
+      .input('payment_ref', sql.NVarChar(50), paymentRef)
+      .query(`
+        INSERT INTO dbo.SUBSCRIPTIONPAYMENTS (user_id, amount, status, payment_ref)
+        OUTPUT INSERTED.payment_id, INSERTED.user_id, INSERTED.amount, INSERTED.status, INSERTED.payment_date
+        VALUES (@user_id, @amount, @status, @payment_ref);
+      `);
+
+    const payment = paymentResult.recordset?.[0];
+
+    // Log activity
+    await logActivity(pool, userId, 'subscription_payment', 'SUBSCRIPTIONPAYMENTS', payment?.payment_id || null);
+
+    return res.status(201).json({
+      msg: 'Subscription payment processed successfully',
+      payment: {
+        id: payment?.payment_id,
+        amount: payment?.amount,
+        status: payment?.status,
+        paymentDate: payment?.payment_date,
+      }
+    });
   } catch (error) {
     return res.status(500).json({ msg: 'Failed to process subscription payment', error: String(error.message || error) });
   }
