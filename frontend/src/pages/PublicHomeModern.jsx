@@ -84,7 +84,7 @@ function Stepper() {
 // FAQ Accordion Item
 function AccordionItem({ question, answer, isOpen, onClick }) {
   return (
-    <div className={`faq-accordion-item ${isOpen ? 'open' : ''}`}>
+    <div className={`faq-accordion-item${isOpen ? ' open' : ''}`}>
       <button className="faq-accordion-header" onClick={onClick}>
         <span>{question}</span>
         <i className="bi bi-chevron-down faq-accordion-icon" />
@@ -391,14 +391,14 @@ export default function PublicHomeModern() {
 
       {/* FAQ Section */}
       <section className="section" style={{ background: 'var(--bg-primary)' }}>
-        <div className="container container-narrow">
-          <div className="section-header">
+        <div className="container container-narrow" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <div className="section-header" style={{ textAlign: 'center', width: '100%' }}>
             <span className="section-label">FAQ</span>
             <h2 className="section-title">Common questions</h2>
           </div>
 
-          <div className="surface-card" style={{ padding: '0 32px' }}>
-            <div className="accordion">
+          <div className="surface-card" style={{ width: '100%', maxWidth: 900, margin: '0 auto', padding: 0 }}>
+            <div className="accordion" style={{ width: '100%' }}>
               {faqs.map((faq, index) => (
                 <AccordionItem
                   key={index}

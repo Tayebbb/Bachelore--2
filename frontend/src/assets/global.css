@@ -674,11 +674,36 @@ p {
   padding: 28px;
   transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
 }
+  /* Glassmorphism base, theme-aware */
+  background: rgba(255, 255, 255, 0.22);
+  border: 1.5px solid rgba(255,255,255,0.35);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.18), var(--shadow-md);
+  backdrop-filter: blur(18px) saturate(1.2);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  padding: 28px 0;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s, background 0.3s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+[data-theme='dark'] .surface-card {
+  background: rgba(30, 32, 38, 0.44);
+  border: 1.5px solid rgba(255,255,255,0.10);
+  box-shadow: 0 8px 32px 0 rgba(0,0,0,0.32), var(--shadow-md);
+}
 
 .surface-card:hover {
   border-color: var(--border-strong);
   box-shadow: var(--shadow-md);
   transform: translateY(-2px);
+}
+.surface-card:hover {
+  border-color: rgba(255,255,255,0.55);
+  box-shadow: 0 12px 40px 0 rgba(31, 38, 135, 0.22), var(--shadow-lg);
+  background: rgba(255,255,255,0.32);
+  transform: translateY(-2px) scale(1.01);
 }
 
 /* Feature cards in bento grid */
@@ -1132,9 +1157,36 @@ p {
   border-bottom: 1px solid var(--border);
   transition: background-color 0.2s ease;
 }
+.faq-accordion-item {
+  border-bottom: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.18);
+  border-radius: 18px;
+  margin-bottom: 18px;
+  box-shadow: 0 2px 16px 0 rgba(31, 38, 135, 0.08);
+  transition: background 0.3s, box-shadow 0.3s;
+  overflow: hidden;
+  width: 98%;
+  margin-left: auto;
+  margin-right: auto;
+}
+[data-theme='dark'] .faq-accordion-item {
+  background: rgba(30,32,38,0.44);
+  border-bottom: 1px solid rgba(255,255,255,0.10);
+}
 
+.faq-accordion-item.open {
+  background: rgba(255,255,255,0.32);
+  box-shadow: 0 4px 24px 0 rgba(31, 38, 135, 0.13);
+}
+[data-theme='dark'] .faq-accordion-item.open {
+  background: rgba(30,32,38,0.60);
+}
 .accordion-item:hover {
   background: var(--bg-elevated);
+}
+.faq-accordion-item:hover {
+  background: rgba(255,255,255,0.28);
+  box-shadow: 0 6px 32px 0 rgba(31, 38, 135, 0.16);
 }
 
 .accordion-header {
@@ -1150,7 +1202,28 @@ p {
   text-align: left;
   transition: color 0.2s;
 }
+.faq-accordion-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 32px;
+  color: var(--fg-primary);
+  font-family: var(--font-body);
+  font-size: 1.1rem;
+  font-weight: 600;
+  text-align: left;
+  background: transparent;
+  border: none;
+  outline: none;
+  cursor: pointer;
+  transition: color 0.2s;
+  backdrop-filter: none;
+}
 
+.faq-accordion-header:hover {
+  color: var(--accent);
+}
 .accordion-header:hover {
   color: var(--accent);
 }
@@ -1159,6 +1232,15 @@ p {
   font-size: 1.25rem;
   color: var(--fg-muted);
   transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.faq-accordion-icon {
+  font-size: 1.25rem;
+  color: var(--fg-muted);
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), color 0.2s;
+}
+.faq-accordion-item.open .faq-accordion-icon {
+  transform: rotate(180deg);
+  color: var(--accent);
 }
 
 .accordion-item.open .accordion-icon {
@@ -1172,6 +1254,25 @@ p {
   transition: max-height 0.4s cubic-bezier(0.22, 1, 0.36, 1), 
               padding 0.4s cubic-bezier(0.22, 1, 0.36, 1);
   padding: 0 24px;
+}
+.faq-accordion-content {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.4s cubic-bezier(0.22, 1, 0.36, 1), 
+              padding 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  padding: 0 32px;
+  background: transparent;
+  text-align: left;
+}
+.faq-accordion-item.open .faq-accordion-content {
+  max-height: 500px;
+  padding-bottom: 32px;
+}
+.faq-accordion-content p {
+  color: var(--fg-muted);
+  line-height: 1.8;
+  font-size: 1.01rem;
+  margin: 0;
 }
 
 .accordion-item.open .accordion-content {
