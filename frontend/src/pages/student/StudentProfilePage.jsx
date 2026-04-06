@@ -100,7 +100,22 @@ export default function StudentProfilePage() {
                   <button type="button" className="panel-btn-sm success" disabled style={{ opacity: 0.8, cursor: 'default' }}>
                     Subscribed
                   </button>
-                  <button type="button" className="panel-btn-sm danger" onClick={unsubscribe} disabled={loadingSubscriptionAction}>
+                  <button
+                    type="button"
+                    onClick={unsubscribe}
+                    disabled={loadingSubscriptionAction}
+                    style={{
+                      padding: '8px 14px',
+                      borderRadius: '6px',
+                      border: '1px solid #b02a37',
+                      backgroundColor: loadingSubscriptionAction ? '#c65d69' : '#dc3545',
+                      color: '#ffffff',
+                      fontWeight: 600,
+                      cursor: loadingSubscriptionAction ? 'not-allowed' : 'pointer',
+                      opacity: loadingSubscriptionAction ? 0.85 : 1,
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
                     {loadingSubscriptionAction ? 'Processing...' : 'Unsubscribe'}
                   </button>
                 </div>

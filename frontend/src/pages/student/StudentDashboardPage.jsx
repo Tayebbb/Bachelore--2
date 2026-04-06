@@ -130,22 +130,34 @@ export default function StudentDashboardPage() {
             border: `1px solid ${isSubscribed ? '#c3e6cb' : '#f5c6cb'}`,
             color: isSubscribed ? '#155724' : '#721c24'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', justifyContent: 'space-between' }}>
-              <i className={`bi ${isSubscribed ? 'bi-check-circle-fill' : 'bi-exclamation-circle-fill'}`} style={{ fontSize: '1.5rem' }} />
-              <div>
-                <strong>{isSubscribed ? 'Subscription Active' : 'Subscription Inactive'}</strong>
-                <p style={{ margin: '4px 0 0 0', fontSize: '0.95em' }}>
-                  {isSubscribed 
-                    ? 'Your subscription is active and you have access to all features.' 
-                    : 'Upgrade to unlock premium features and post unlimited listings.'}
-                </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: '1 1 320px' }}>
+                <i className={`bi ${isSubscribed ? 'bi-check-circle-fill' : 'bi-exclamation-circle-fill'}`} style={{ fontSize: '1.5rem', flexShrink: 0 }} />
+                <div>
+                  <strong>{isSubscribed ? 'Subscription Active' : 'Subscription Inactive'}</strong>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '0.95em' }}>
+                    {isSubscribed
+                      ? 'Your subscription is active and you have access to all features.'
+                      : 'Upgrade to unlock premium features and post unlimited listings.'}
+                  </p>
+                </div>
               </div>
               {isSubscribed && (
                 <button
                   type="button"
-                  className="panel-btn-sm danger"
                   onClick={unsubscribe}
                   disabled={subscriptionActionLoading}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: '6px',
+                    border: '1px solid #b02a37',
+                    backgroundColor: subscriptionActionLoading ? '#c65d69' : '#dc3545',
+                    color: '#ffffff',
+                    fontWeight: 600,
+                    cursor: subscriptionActionLoading ? 'not-allowed' : 'pointer',
+                    opacity: subscriptionActionLoading ? 0.85 : 1,
+                    whiteSpace: 'nowrap'
+                  }}
                 >
                   {subscriptionActionLoading ? 'Processing...' : 'Unsubscribe'}
                 </button>
