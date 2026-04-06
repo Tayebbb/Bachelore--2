@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import api from '../../components/axios.jsx';
 import { getUser } from '../../lib/auth';
 import SubscriptionModal from '../../components/SubscriptionModal.jsx';
@@ -11,6 +12,7 @@ export default function StudentDashboardPage() {
   const [error, setError] = useState(null);
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const user = getUser();
+  const location = useLocation();
 
   useEffect(() => {
     const load = async () => {
@@ -35,7 +37,7 @@ export default function StudentDashboardPage() {
       }
     };
     load();
-  }, [showSubscriptionModal]);
+  }, [showSubscriptionModal, location.pathname]);
 
   const cards = [
     { label: 'Applications', value: overview?.total_applications ?? 0 },

@@ -1,8 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../components/axios.jsx';
+import { useNavigate } from 'react-router-dom';
 
 export default function StudentProfilePage() {
   const [form, setForm] = useState({ name: '', email: '' });
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [loadingSubscriptionAction, setLoadingSubscriptionAction] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const load = async () => {
@@ -14,6 +18,13 @@ export default function StudentProfilePage() {
         });
       } catch {
         setForm({ name: '', email: '' });
+      }
+
+      try {
+        const { data } = await api.get('/api/student/dashboard');
+        setIsSubscribed(Boolean(data?.isSubscribed));
+      } catch {
+        setIsSubscribed(false);
       }
     };
     load();
@@ -28,11 +39,22 @@ export default function StudentProfilePage() {
     }
   };
 
-  const paySubscription = async () => {
+  const paySubscription = () => {
+    navigate('/subscribe');
+  };
+
+  const unsubscribe = async () => {
+    const ok = window.confirm('Are you sure you want to unsubscribe?');
+    if (!ok) return;
+
     try {
-      await api.post('/api/student/subscription/pay', { amount: 99 });
+      setLoadingSubscriptionAction(true);
+      await api.post('/api/student/subscription/unsubscribe');
+      setIsSubscribed(false);
     } catch {
       // ignore for now
+    } finally {
+      setLoadingSubscriptionAction(false);
     }
   };
 
@@ -68,8 +90,23 @@ export default function StudentProfilePage() {
         <div>
           <div className="panel-block">
               <h5 className="panel-block-title">Subscription</h5>
-              <p className="panel-page-subtitle">Subscribe to unlock all paid modules (৳99/month).</p>
-              <button type="button" className="panel-btn-sm success" onClick={paySubscription}>Pay ৳99</button>
+              <p className="panel-page-subtitle">
+                {isSubscribed
+                  ? 'You are subscribed. All paid modules are unlocked.'
+                  : 'Subscribe to unlock all paid modules (৳99/month).'}
+              </p>
+              {isSubscribed ? (
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <button type="button" className="panel-btn-sm success" disabled style={{ opacity: 0.8, cursor: 'default' }}>
+                    Subscribed
+                  </button>
+                  <button type="button" className="panel-btn-sm danger" onClick={unsubscribe} disabled={loadingSubscriptionAction}>
+                    {loadingSubscriptionAction ? 'Processing...' : 'Unsubscribe'}
+                  </button>
+                </div>
+              ) : (
+                <button type="button" className="panel-btn-sm success" onClick={paySubscription}>Pay ৳99</button>
+              )}
           </div>
         </div>
       </div>

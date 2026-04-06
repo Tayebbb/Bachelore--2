@@ -652,6 +652,15 @@ router.post('/subscription/pay', async (req, res) => {
 
     const payment = paymentResult.recordset?.[0];
 
+    await pool
+      .request()
+      .input('user_id', sql.UniqueIdentifier, userId)
+      .query(`
+        UPDATE dbo.USERS
+        SET subscription_active = 1
+        WHERE user_id = @user_id;
+      `);
+
     // Log activity
     await logActivity(pool, userId, 'subscription_payment', 'SUBSCRIPTIONPAYMENTS', payment?.payment_id || null);
 
@@ -666,6 +675,52 @@ router.post('/subscription/pay', async (req, res) => {
     });
   } catch (error) {
     return res.status(500).json({ msg: 'Failed to process subscription payment', error: String(error.message || error) });
+  }
+});
+
+router.post('/subscription/unsubscribe', async (req, res) => {
+  try {
+    const userId = getAuthUserId(req);
+    const pool = await getPool();
+
+    const latestPaid = await pool
+      .request()
+      .input('user_id', sql.UniqueIdentifier, userId)
+      .query(`
+        SELECT TOP 1 payment_id, amount
+        FROM dbo.SUBSCRIPTIONPAYMENTS
+        WHERE user_id = @user_id AND LOWER(status) = 'paid'
+        ORDER BY payment_date DESC;
+      `);
+
+    const amount = Number(latestPaid.recordset?.[0]?.amount || 99);
+
+    const unsubResult = await pool
+      .request()
+      .input('user_id', sql.UniqueIdentifier, userId)
+      .input('amount', sql.Decimal(10, 2), amount)
+      .input('status', sql.NVarChar(30), 'refunded')
+      .input('payment_ref', sql.NVarChar(50), 'UNSUBSCRIBED')
+      .query(`
+        INSERT INTO dbo.SUBSCRIPTIONPAYMENTS (user_id, amount, status, payment_ref)
+        OUTPUT INSERTED.payment_id
+        VALUES (@user_id, @amount, @status, @payment_ref);
+      `);
+
+    await pool
+      .request()
+      .input('user_id', sql.UniqueIdentifier, userId)
+      .query(`
+        UPDATE dbo.USERS
+        SET subscription_active = 0
+        WHERE user_id = @user_id;
+      `);
+
+    await logActivity(pool, userId, 'subscription_unsubscribed', 'SUBSCRIPTIONPAYMENTS', unsubResult.recordset?.[0]?.payment_id || null);
+
+    return res.json({ msg: 'Unsubscribed successfully.' });
+  } catch (error) {
+    return res.status(500).json({ msg: 'Failed to unsubscribe', error: String(error.message || error) });
   }
 });
 
