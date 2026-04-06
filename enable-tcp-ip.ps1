@@ -7,12 +7,24 @@ param(
 
 function Enable-TCPIP {
   Write-Host "Attempting to enable TCP/IP for SQL Server Express..." -ForegroundColor Cyan
-  
-  $regPath = 'HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\MSSQL17.SQLEXPRESS\MSSQLServer\SuperSocketNetLib\Tcp'
+
+  $instanceRoot = 'HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server'
+  $instanceKey = Get-ChildItem -Path $instanceRoot -ErrorAction SilentlyContinue |
+    Where-Object { $_.PSChildName -match '^MSSQL\d+\.SQLEXPRESS$' } |
+    Sort-Object PSChildName -Descending |
+    Select-Object -First 1
+
+  if (-not $instanceKey) {
+    Write-Host "✗ Could not find an installed SQLEXPRESS instance in registry." -ForegroundColor Red
+    return $false
+  }
+
+  $regPath = "HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\$($instanceKey.PSChildName)\MSSQLServer\SuperSocketNetLib\Tcp"
   
   try {
-    $current = (Get-Item -Path $regPath).GetValue('Enabled')
+    $current = (Get-Item -Path $regPath -ErrorAction Stop).GetValue('Enabled')
     Write-Host "Current TCP/IP Enabled value: $current" -ForegroundColor Yellow
+    Write-Host "Target instance key: $($instanceKey.PSChildName)" -ForegroundColor Yellow
     
     Set-ItemProperty -Path $regPath -Name 'Enabled' -Value 1 -Force -ErrorAction Stop
     $newValue = (Get-Item -Path $regPath).GetValue('Enabled')
