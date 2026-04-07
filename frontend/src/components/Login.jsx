@@ -2,7 +2,6 @@
 
 import React, { useState } from "react";
 import { useNavigate } from 'react-router-dom'
-import Navbar from "./Navbar";
 import bg1image from "../assets/bg1image.jpg";
 import "../App.css";
 import AuthCard from './AuthCard'
@@ -29,7 +28,11 @@ const Login = () => {
       const { data } = await axios.post('/api/login', { email, password })
       if (data && data.user) {
         // store auth flag / user and navigate
-  try { authLogin(data.user) } catch(e){}
+        try {
+          authLogin(data.user, data.token)
+        } catch (authErr) {
+          console.error('Auth state save failed:', authErr)
+        }
         console.log('Logged in user:', data.user)
         setEmail('')
         setPassword('')
@@ -50,7 +53,6 @@ const Login = () => {
     <>
       <img src={bg1image} alt="Background" className="background-image" />
       <div className="app-container">
-        <Navbar />
         <AuthCard title="Login">
           <form className="auth-form" onSubmit={handleSubmit} style={{ width: '100%', maxWidth: 340, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
               <input
@@ -68,7 +70,13 @@ const Login = () => {
                 className="auth-input signup-gradient-input auth-input-styled"
               />
               {error && <div className="auth-error">{error}</div>}
-              <button type="submit" className="auth-btn signup-gradient-btn auth-submit-btn">Login</button>
+              <button
+                type="submit"
+                className="auth-btn signup-gradient-btn auth-submit-btn"
+                disabled={loading}
+              >
+                {loading ? 'Logging in...' : 'Login'}
+              </button>
             </form>
         </AuthCard>
       </div>

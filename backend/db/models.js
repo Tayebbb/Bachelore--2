@@ -220,19 +220,14 @@ export const MarketplaceListing = sequelize.define(
 export const SubscriptionPayment = sequelize.define(
   'SubscriptionPayment',
   {
-    SubscriptionPaymentId: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-    Amount: { type: DataTypes.DECIMAL(12, 2), allowNull: false },
-    PaymentMethod: { type: DataTypes.STRING(80), allowNull: false },
-    TransactionId: { type: DataTypes.STRING(150), allowNull: true },
-    Status: {
-      type: DataTypes.ENUM('pending', 'completed', 'failed'),
-      allowNull: false,
-      defaultValue: 'pending',
-    },
-    PaidAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
-    Details: { type: DataTypes.JSON, allowNull: true },
+    payment_id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true, field: 'payment_id' },
+    user_id: { type: DataTypes.UUID, allowNull: false, field: 'user_id' },
+    amount: { type: DataTypes.DECIMAL(10, 2), allowNull: false, field: 'amount' },
+    status: { type: DataTypes.STRING(30), allowNull: false, defaultValue: 'pending', field: 'status' },
+    payment_date: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW, field: 'payment_date' },
+    payment_ref: { type: DataTypes.STRING(50), allowNull: true, field: 'payment_ref' },
   },
-  { ...commonModelOptions, tableName: 'SubscriptionPayments', indexes: [{ fields: ['Status'] }] },
+  { tableName: 'SUBSCRIPTIONPAYMENTS', timestamps: false, indexes: [{ fields: ['status'] }, { fields: ['user_id'] }], freezeTableName: true },
 );
 
 export const Notification = sequelize.define(
@@ -404,6 +399,17 @@ export function applyAssociations() {
 
 
   // Removed all associations to Contact since the table/model does not exist.
+
+  User.hasMany(SubscriptionPayment, {
+    foreignKey: { name: 'UserId', allowNull: false },
+    onDelete: 'CASCADE',
+    onUpdate: 'CASCADE',
+  });
+  SubscriptionPayment.belongsTo(User, {
+    foreignKey: { name: 'UserId', allowNull: false },
+    onDelete: 'CASCADE',
+    onUpdate: 'CASCADE',
+  });
 }
 
 applyAssociations();

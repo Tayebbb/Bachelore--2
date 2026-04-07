@@ -1,7 +1,8 @@
 
 import React, { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import axios from '../components/axios'
+import { login as authLogin } from '../lib/auth'
 import Footer from '../components/Footer'
 
 const UNIVERSITIES = [
@@ -30,6 +31,7 @@ const YEARS = ['1st', '2nd', '3rd', '4th', '5th'];
 const SEMESTERS = ['Spring', 'Summer', 'Fall', 'Winter'];
 
 export default function Signup(){
+  const navigate = useNavigate()
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
@@ -90,11 +92,15 @@ export default function Signup(){
       })
       // backend returns { msg, user }
       if(data && data.user){
+        authLogin(data.user, data.token)
         setStatus('success')
         setError('')
+        navigate('/student/dashboard')
       } else if(data && data.msg){
+        authLogin(data.user || { name: fullName, email, role: 'student' }, data.token)
         setStatus('success')
         setError('')
+        navigate('/student/dashboard')
       } else {
         setStatus('error')
         setError('Unexpected server response')

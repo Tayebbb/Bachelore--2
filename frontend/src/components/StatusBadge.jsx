@@ -1,16 +1,44 @@
 import React from 'react';
 
-export default function StatusBadge({ status = 'Pending' }) {
-  const normalized = String(status).toLowerCase();
-  let className = 'badge-status badge-pending';
+const statusMap = {
+  approved: 'badge-approved',
+  booked: 'badge-booked',
+  active: 'badge-approved',
+  available: 'badge-approved',
+  success: 'badge-approved',
+  service: 'badge-approved',
+  pending: 'badge-pending',
+  processing: 'badge-pending',
+  system: 'badge-pending',
+  pricing: 'badge-pending',
+  rejected: 'badge-rejected',
+  cancelled: 'badge-rejected',
+  failed: 'badge-failed',
+  sold: 'badge-rejected',
+  inactive: 'badge-pending',
+};
 
-  if (normalized.includes('approved') || normalized.includes('completed')) {
-    className = 'badge-status badge-approved';
-  } else if (normalized.includes('booked') || normalized.includes('sold')) {
-    className = 'badge-status badge-booked';
-  } else if (normalized.includes('reject') || normalized.includes('failed') || normalized.includes('cancel')) {
-    className = 'badge-status badge-rejected';
-  }
+const statusIcons = {
+  approved: 'bi-check-circle',
+  booked: 'bi-calendar-check',
+  active: 'bi-circle-fill',
+  pending: 'bi-clock',
+  rejected: 'bi-x-circle',
+  failed: 'bi-exclamation-circle',
+  sold: 'bi-tag',
+};
 
-  return <span className={className}>{status}</span>;
+export default function StatusBadge({ status, showIcon = true }) {
+  const key = status?.toLowerCase().replace(/\s+/g, '_');
+  const cls = statusMap[key] || statusMap[status?.toLowerCase()] || 'badge-pending';
+  const icon = statusIcons[key] || statusIcons[status?.toLowerCase()];
+
+  return (
+    <span className={`badge-status ${cls}`}>
+      {showIcon && icon && (
+        <i className={`bi ${icon}`} style={{ fontSize: '0.65rem' }} />
+      )}
+      {status}
+    </span>
+  );
 }

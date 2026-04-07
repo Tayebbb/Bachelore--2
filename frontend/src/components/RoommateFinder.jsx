@@ -26,8 +26,6 @@ export default function RoommateFinder() {
     <>
       <img src={bg1image} alt="Background" className="background-image" />
       <div className="app-container">
-        <Navbar />
-
         <main className="rm-page">
           <header className="rm-hero">
             <h1 className="rm-title">Roommate Finder</h1>
@@ -101,7 +99,7 @@ export default function RoommateFinder() {
           </section>
         </main>
 
-        <Footer />
+        {/* Footer is rendered globally */}
       </div>
     </>
   );

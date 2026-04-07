@@ -5,14 +5,17 @@ import sql from 'mssql';
 async function testConnection() {
   try {
     console.log('Attempting connection with config:');
+    const dbPortFromEnv = process.env.DB_PORT ? Number(process.env.DB_PORT) : undefined;
     const config = {
-      server: 'localhost\\SQLEXPRESS',
+      server: process.env.DB_HOST || 'localhost',
+      ...(dbPortFromEnv ? { port: dbPortFromEnv } : {}),
       database: process.env.DB_NAME || 'BACHELORE',
       user: process.env.DB_USER,
       password: process.env.DB_PASSWORD,
       options: {
         encrypt: false,
         trustServerCertificate: true,
+        ...(!dbPortFromEnv && process.env.DB_INSTANCE ? { instanceName: process.env.DB_INSTANCE } : {}),
       },
     };
     console.log(JSON.stringify(config, null, 2));

@@ -6,7 +6,10 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "db:test": "node test-db-connection.js",
+    "db:provision": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-shared-db.ps1",
+    "db:seed": "sqlcmd -S .\\SQLEXPRESS -E -i ../BACHELORE_COMPLETE_SYSTEM.sql"
   },
   "keywords": [],
   "author": "",
@@ -22,7 +25,8 @@
     "mongoose": "^8.18.1",
     "mssql": "^12.2.1",
     "sequelize": "^6.37.8",
-    "tedious": "^19.2.1"
+    "tedious": "^19.2.1",
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.11"

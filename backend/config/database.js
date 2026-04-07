@@ -6,14 +6,14 @@ dotenv.config();
 
 const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
-  port: Number(process.env.DB_PORT || 1433),
+  port: process.env.DB_PORT ? Number(process.env.DB_PORT) : undefined,
   database: process.env.DB_NAME || 'BACHELORE',
   username: process.env.DB_USER || 'bachelore_user',
   password: process.env.DB_PASSWORD || '',
-  instanceName: process.env.DB_INSTANCE || 'SQLEXPRESS',
+  instanceName: process.env.DB_INSTANCE || '',
 };
 
-const useInstance = Boolean(dbConfig.instanceName);
+const useInstance = Boolean(dbConfig.instanceName) && !dbConfig.port;
 
 function createSequelizeOptions(databaseName) {
   const options = {

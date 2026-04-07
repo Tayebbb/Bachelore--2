@@ -1,116 +1,209 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Link, useNavigate, useLocation } from 'react-router-dom'
+import { Link, useNavigate, useLocation, NavLink } from 'react-router-dom'
 import { isAuthed, logout as authLogout, onAuthChange, offAuthChange } from '../lib/auth'
 
 export default function Navbar(){
   const navRef = useRef(null)
   const [authed, setAuthed] = useState(()=> isAuthed())
   const [menuOpen, setMenuOpen] = useState(false)
-  const navigate = useNavigate()
-  const location = useLocation()
+  const [isScrolled, setIsScrolled] = useState(false)
+  const [theme, setTheme] = useState(() => {
+    try {
+      return localStorage.getItem('theme') || 'light'
+    } catch (_) {
+      return "light";
+    }
+  });
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const toggleTheme = () => {
+    const nextTheme = theme === "dark" ? "light" : "dark";
+    setTheme(nextTheme);
+    document.documentElement.setAttribute("data-theme", nextTheme);
+    try {
+      localStorage.setItem('theme', nextTheme)
+    } catch (_) {}
+  };
 
   const handleLogout = () => {
-    authLogout()
-    setAuthed(false)
-    navigate('/')
-  }
+    authLogout();
+    setAuthed(false);
+    navigate("/");
+  };
 
-  useEffect(()=>{
-    const el = navRef.current
-    if(el){
+  useEffect(() => {
+    const el = navRef.current;
+    if (el) {
       const onScroll = () => {
-        if(window.scrollY > 8) el.classList.add('scrolled')
-        else el.classList.remove('scrolled')
+        setIsScrolled(window.scrollY > 10)
       }
       window.addEventListener('scroll', onScroll, {passive:true})
       return ()=> window.removeEventListener('scroll', onScroll)
     }
-  }, [])
-
-  useEffect(()=>{
-    const onChange = ()=> setAuthed(isAuthed())
-    onAuthChange(onChange)
-    return ()=> offAuthChange(onChange)
-  }, [])
+  }, []);
 
   useEffect(() => {
-    setMenuOpen(false)
-  }, [location.pathname])
+    const onChange = () => setAuthed(isAuthed());
+    onAuthChange(onChange);
+    return () => offAuthChange(onChange);
+  }, []);
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
+
+  // Don't show navbar on auth pages
+  if (location.pathname === '/login' || location.pathname === '/signup' || location.pathname === '/admin-login' || location.pathname === '/admin/login') {
+    return null
+  }
+
+  const navLinks = [
+    { to: '/home', label: 'Dashboard' },
+    { to: '/roommates', label: 'Roommates' },
+    { to: '/maids', label: 'Maids' },
+    { to: '/tuition', label: 'Tuition' },
+    { to: '/houserent', label: 'House Rent' },
+    { to: '/marketplace', label: 'Marketplace' },
+  ]
 
   return (
-  <nav ref={navRef} className="navbar navbar-expand-lg sticky-top navbar-custom">
-    <div className="container">
-      <Link className="navbar-logo navbar-brand d-flex align-items-center gap-2" to={isAuthed() ? '/home' : '/'}>
-        <img src="/logo.png" alt="BacheLORE" width={38} height={38} className="brand-logo-img" />
-        <span className="brand-title">BacheLORE</span>
-      </Link>
+    <nav ref={navRef} className={`top-nav ${isScrolled ? 'scrolled' : ''}`}>
+      <div className="container">
+        <div className="nav-inner">
+          {/* Brand */}
+          <Link to={isAuthed() ? '/home' : '/'} className="nav-brand">
+            <span className="brand-mark">BL</span>
+            <span>BacheLORE</span>
+          </Link>
 
-      <button
-        className="navbar-toggler d-lg-none"
-        type="button"
-        onClick={() => setMenuOpen((v) => !v)}
-        aria-controls="mainNavMobile"
-        aria-expanded={menuOpen}
-        aria-label="Toggle navigation"
-      >
-        <span className="navbar-toggler-icon" />
-      </button>
+          {/* Desktop Navigation Links */}
+          <div className="nav-links d-none d-lg-flex">
+            {navLinks.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+              >
+                {item.label}
+              </NavLink>
+            ))}
+          </div>
 
-      <div className="d-none d-lg-flex ms-auto" id="mainNavDesktop">
-        <ul className="navbar-nav ms-auto mb-2 mb-lg-0 d-flex align-items-lg-center navbar-links">
-          <li className="nav-item"><Link className="nav-link" to="/roommates">Roommates</Link></li>
-          <li className="nav-item"><Link className="nav-link" to="/maids">Maids</Link></li>
-          <li className="nav-item"><Link className="nav-link" to="/tuition">Tuition</Link></li>
-          <li className="nav-item"><Link className="nav-link" to="/bills">Bills</Link></li>
-          <li className="nav-item"><Link className="nav-link" to="/marketplace">Marketplace</Link></li>
-          <li className="nav-item"><Link className="nav-link" to="/subscription-payments">Payments</Link></li>
-          <li className="nav-item"><Link className="nav-link" to="/activities">Activity Log</Link></li>
-          {(!authed || location.pathname === '/') ? (
-            <>
-              <li className="nav-item mt-2 mt-lg-0">
-                <Link className="btn btn-primary btn-sm w-100 w-lg-auto text-center" to="/login">Login</Link>
-              </li>
-              <li className="nav-item mt-2 mt-lg-0 ms-lg-2">
-                <Link className="btn btn-success btn-sm w-100 w-lg-auto text-center" to="/signup">Sign up</Link>
-              </li>
-            </>
-          ) : (
-            <li className="nav-item mt-2 mt-lg-0 ms-lg-2">
-              <button className="btn btn-danger btn-sm w-100 w-lg-auto text-center" onClick={handleLogout}>Logout</button>
-            </li>
-          )}
-        </ul>
+          {/* Right Actions */}
+          <div className="nav-actions">
+            {/* Theme Toggle */}
+            <button
+              className="theme-toggle"
+              onClick={toggleTheme}
+              type="button"
+              aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+            >
+              <i className={`bi ${theme === 'light' ? 'bi-moon-stars' : 'bi-sun-fill'}`} />
+            </button>
+
+            {/* Auth Buttons */}
+            <div className="d-none d-sm-flex" style={{ gap: 12 }}>
+              {(!authed || location.pathname === '/') ? (
+                <>
+                  <Link to="/login" className="btn-ghost">
+                    Log in
+                  </Link>
+                  <Link to="/signup" className="btn-primary">
+                    Get Started
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <Link to="/profile" className="btn-ghost">
+                    <i className="bi bi-person" style={{ marginRight: 6 }} />
+                    Profile
+                  </Link>
+                  <button
+                    className="btn-ghost"
+                    onClick={handleLogout}
+                    style={{ color: 'var(--danger)' }}
+                  >
+                    <i className="bi bi-box-arrow-right" style={{ marginRight: 6 }} />
+                    Logout
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* Mobile Menu Toggle */}
+            <button
+              className="theme-toggle d-lg-none"
+              onClick={() => setMenuOpen(!menuOpen)}
+              type="button"
+              aria-label="Toggle menu"
+            >
+              <i className={`bi ${menuOpen ? 'bi-x-lg' : 'bi-list'}`} />
+            </button>
+          </div>
+        </div>
       </div>
 
-      <div
-        id="mainNavMobile"
-        className={`navbar-mobile-panel d-lg-none ${menuOpen ? 'open' : ''}`}
-      >
-        <ul className="navbar-nav navbar-links-mobile">
-          <li className="nav-item"><Link className="nav-link" to="/roommates">Roommates</Link></li>
-          <li className="nav-item"><Link className="nav-link" to="/maids">Maids</Link></li>
-          <li className="nav-item"><Link className="nav-link" to="/tuition">Tuition</Link></li>
-          <li className="nav-item"><Link className="nav-link" to="/bills">Bills</Link></li>
-          <li className="nav-item"><Link className="nav-link" to="/marketplace">Marketplace</Link></li>
-          <li className="nav-item"><Link className="nav-link" to="/subscription-payments">Payments</Link></li>
-          <li className="nav-item"><Link className="nav-link" to="/activities">Activity Log</Link></li>
-          {(!authed || location.pathname === '/') ? (
-            <>
-              <li className="nav-item mt-2">
-                <Link className="btn btn-primary btn-sm w-100 text-center" to="/login">Login</Link>
-              </li>
-              <li className="nav-item mt-2">
-                <Link className="btn btn-success btn-sm w-100 text-center" to="/signup">Sign up</Link>
-              </li>
-            </>
-          ) : (
-            <li className="nav-item mt-2">
-              <button className="btn btn-danger btn-sm w-100 text-center" onClick={handleLogout}>Logout</button>
-            </li>
-          )}
-        </ul>
-      </div>
-    </div>
-  </nav>
+      {/* Mobile Menu Overlay */}
+      {menuOpen && (
+        <div
+          className="d-lg-none"
+          style={{
+            background: 'var(--bg-surface)',
+            borderTop: '1px solid var(--border)',
+            padding: '16px 24px',
+            animation: 'slideDown 0.3s ease',
+          }}
+        >
+          {navLinks.map((item, index) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              onClick={() => setMenuOpen(false)}
+              className={({ isActive }) => `
+                d-flex align-items-center gap-3 py-3
+                ${isActive ? 'text-primary' : 'text-muted'}
+              `}
+              style={{
+                textDecoration: 'none',
+                borderBottom: index < navLinks.length - 1 ? '1px solid var(--border)' : 'none',
+              }}
+            >
+              {item.label}
+            </NavLink>
+          ))}
+
+          {/* Mobile Auth Buttons */}
+          <div style={{ marginTop: 16, display: 'flex', gap: 12 }}>
+            {(!authed || location.pathname === '/') ? (
+              <>
+                <Link to="/login" className="btn-ghost flex-1" onClick={() => setMenuOpen(false)}>
+                  Log in
+                </Link>
+                <Link to="/signup" className="btn-primary flex-1" onClick={() => setMenuOpen(false)}>
+                  Get Started
+                </Link>
+              </>
+            ) : (
+              <button
+                className="btn-ghost w-100"
+                onClick={() => {
+                  setMenuOpen(false)
+                  handleLogout()
+                }}
+                style={{ color: 'var(--danger)' }}
+              >
+                <i className="bi bi-box-arrow-right" style={{ marginRight: 6 }} />
+                Logout
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </nav>
   )
 }

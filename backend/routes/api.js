@@ -6,6 +6,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequest, getPool, sql } from '../db/connection.js';
+import { isAdminFromReq } from '../utils/auth.js';
 
 const router = express.Router();
 
@@ -54,6 +55,62 @@ function normalizeUser(row) {
   };
 }
 
+function pickFirst(existing, candidates) {
+  for (const key of candidates) {
+    if (existing.has(key)) return key;
+  }
+  return null;
+}
+
+async function resolveUsersSchema(pool) {
+  const cols = await pool
+    .request()
+    .query(`SELECT name FROM sys.columns WHERE object_id = OBJECT_ID('dbo.USERS')`);
+
+  const colSet = new Set((cols.recordset || []).map((r) => String(r.name || '')));
+
+  return {
+    idCol: pickFirst(colSet, ['user_id', 'UserId']),
+    nameCol: pickFirst(colSet, ['name', 'FullName', 'Name']),
+    emailCol: pickFirst(colSet, ['email', 'Email']),
+    passwordCol: pickFirst(colSet, ['password_hash', 'PasswordHash', 'Password']),
+    roleCol: pickFirst(colSet, ['role', 'Role']),
+    createdAtCol: pickFirst(colSet, ['created_at', 'CreatedAt']),
+    hasModernPasswordCol: colSet.has('password_hash'),
+  };
+}
+
+async function getDbUserByEmail(pool, email) {
+  const schema = await resolveUsersSchema(pool);
+  if (!schema.emailCol || !schema.passwordCol) {
+    throw new Error('USERS table is missing required email/password columns.');
+  }
+
+  const idExpr = schema.idCol ? `[${schema.idCol}]` : 'NULL';
+  const nameExpr = schema.nameCol ? `[${schema.nameCol}]` : 'NULL';
+  const roleExpr = schema.roleCol ? `[${schema.roleCol}]` : "'student'";
+  const createdExpr = schema.createdAtCol ? `[${schema.createdAtCol}]` : 'SYSUTCDATETIME()';
+
+  const query = `
+    SELECT TOP 1
+      ${idExpr} AS user_id,
+      ${nameExpr} AS name,
+      [${schema.emailCol}] AS email,
+      [${schema.passwordCol}] AS password_value,
+      ${roleExpr} AS role,
+      ${createdExpr} AS created_at
+    FROM dbo.USERS
+    WHERE LOWER(CAST([${schema.emailCol}] AS NVARCHAR(320))) = @email
+  `;
+
+  const result = await pool
+    .request()
+    .input('email', sql.NVarChar(320), String(email || '').toLowerCase())
+    .query(query);
+
+  return { row: result.recordset[0] || null, schema };
+}
+
 async function logActivity(poolOrTx, userId, actionType, referenceTable, referenceId = null) {
   if (!userId) return;
   const req = createRequest(poolOrTx)
@@ -84,8 +141,16 @@ async function resolveActorId(pool, preferredId) {
   }
   const fallback = await pool
     .request()
-    .query("SELECT TOP 1 user_id FROM dbo.USERS WHERE role = 'admin' ORDER BY created_at ASC");
+    .query("SELECT TOP 1 user_id FROM dbo.USERS ORDER BY CASE WHEN role = 'admin' THEN 0 ELSE 1 END, created_at ASC");
   return fallback.recordset[0]?.user_id || null;
+}
+
+function ensureAdmin(req, res) {
+  if (!isAdminFromReq(req)) {
+    res.status(403).json({ msg: 'Admin access required for this endpoint.' });
+    return false;
+  }
+  return true;
 }
 
 router.get('/health', async (_req, res) => {
@@ -125,9 +190,23 @@ router.post('/signup', async (req, res) => {
           VALUES (@name, @email, @password_hash, 'student')
         `);
 
+      if (phone) {
+        await pool
+          .request()
+          .input('user_id', sql.UniqueIdentifier, result.recordset[0]?.user_id)
+          .input('phone', sql.NVarChar(40), String(phone))
+          .query(`
+            IF COL_LENGTH('dbo.USERS', 'phone') IS NOT NULL
+              UPDATE dbo.USERS SET phone = @phone WHERE user_id = @user_id;
+          `);
+      }
+
       const user = normalizeUser(result.recordset[0]);
       await logActivity(pool, user.user_id, 'signup', 'USERS', user.user_id);
-      return res.status(201).json({ msg: 'Signup successful', user });
+      const token = jwt.sign({ user_id: user.user_id, role: user.role || 'student' }, JWT_SECRET, {
+        expiresIn: '7d',
+      });
+      return res.status(201).json({ msg: 'Signup successful', user, token });
     } catch (dbErr) {
       if (!isDbUnavailable(dbErr)) {
         throw dbErr;
@@ -160,9 +239,14 @@ router.post('/signup', async (req, res) => {
       localUsers.push(localUser);
       await writeLocalUsers(localUsers);
 
+      const token = jwt.sign({ user_id: localUser.user_id, role: localUser.role || 'student' }, JWT_SECRET, {
+        expiresIn: '7d',
+      });
+
       return res.status(201).json({
         msg: 'Signup successful (offline mode)',
         user: normalizeUser(localUser),
+        token,
       });
     }
   } catch (error) {
@@ -178,24 +262,53 @@ router.post('/login', async (req, res) => {
     }
     try {
       const pool = await getPool();
-      const userResult = await pool
-        .request()
-        .input('email', sql.NVarChar(180), email.toLowerCase())
-        .query('SELECT user_id, name, email, password_hash, role, created_at FROM dbo.USERS WHERE email = @email');
-
-      const userRow = userResult.recordset[0];
+      const { row: userRow, schema } = await getDbUserByEmail(pool, email);
       if (!userRow) {
         return res.status(401).json({ msg: 'Invalid credentials' });
       }
 
-      const valid = await bcrypt.compare(password, userRow.password_hash);
+      const storedPassword = String(userRow.password_value || '');
+      let valid = false;
+
+      if (storedPassword.startsWith('$2')) {
+        valid = await bcrypt.compare(password, storedPassword);
+      } else if (storedPassword && password === storedPassword) {
+        valid = true;
+
+        // Auto-migrate legacy plaintext passwords after successful login.
+        try {
+          const newHash = await bcrypt.hash(password, 10);
+          if (schema.hasModernPasswordCol && userRow.user_id) {
+            await pool
+              .request()
+              .input('user_id', sql.UniqueIdentifier, userRow.user_id)
+              .input('password_hash', sql.NVarChar(255), newHash)
+              .query('UPDATE dbo.USERS SET password_hash = @password_hash WHERE user_id = @user_id');
+          } else if (schema.passwordCol && schema.emailCol) {
+            await pool
+              .request()
+              .input('email', sql.NVarChar(320), String(userRow.email || '').toLowerCase())
+              .input('password_hash', sql.NVarChar(255), newHash)
+              .query(`
+                UPDATE dbo.USERS
+                SET [${schema.passwordCol}] = @password_hash
+                WHERE LOWER(CAST([${schema.emailCol}] AS NVARCHAR(320))) = @email
+              `);
+          }
+        } catch {
+          // Non-fatal: login should still succeed even if migration update fails.
+        }
+      }
+
       if (!valid) {
         return res.status(401).json({ msg: 'Invalid credentials' });
       }
 
-      const token = jwt.sign({ user_id: userRow.user_id, role: userRow.role }, JWT_SECRET, {
-        expiresIn: '7d',
-      });
+      const token = jwt.sign(
+        { user_id: userRow.user_id, role: userRow.role || 'student' },
+        JWT_SECRET,
+        { expiresIn: '7d' }
+      );
 
       const user = normalizeUser(userRow);
       await logActivity(pool, user.user_id, 'login', 'USERS', user.user_id);
@@ -291,18 +404,23 @@ router.post('/tuitions', async (req, res) => {
 
     const pool = await getPool();
     const resolvedOwnerId = await resolveActorId(pool, ownerId);
+    const tuitionId = randomUUID();
     const result = await pool
       .request()
+      .input('tuition_id', sql.UniqueIdentifier, tuitionId)
       .input('user_id', sql.UniqueIdentifier, resolvedOwnerId)
       .input('subject', sql.NVarChar(140), finalSubject)
       .input('salary', sql.Decimal(10, 2), Number(salary))
       .input('location', sql.NVarChar(160), location)
-      .input('status', sql.NVarChar(30), status || 'open')
+      .input('status', sql.NVarChar(30), status || 'pending')
       .query(`
-        INSERT INTO dbo.TUITIONS (user_id, subject, salary, location, status)
-        OUTPUT INSERTED.tuition_id AS _id, INSERTED.tuition_id, INSERTED.user_id, INSERTED.subject,
-               INSERTED.subject AS title, INSERTED.salary, INSERTED.location, INSERTED.status, INSERTED.created_at
-        VALUES (@user_id, @subject, @salary, @location, @status)
+        INSERT INTO dbo.TUITIONS (tuition_id, user_id, subject, salary, location, status, is_listed)
+        VALUES (@tuition_id, @user_id, @subject, @salary, @location, @status, 0);
+
+        SELECT t.tuition_id AS _id, t.tuition_id, t.user_id, t.subject,
+               t.subject AS title, t.salary, t.location, t.status, t.created_at
+        FROM dbo.TUITIONS t
+        WHERE t.tuition_id = @tuition_id;
       `);
 
     await logActivity(pool, resolvedOwnerId, 'create_tuition', 'TUITIONS', result.recordset[0].tuition_id);
@@ -468,24 +586,31 @@ router.post('/maids', async (req, res) => {
     const salary = req.body.salary ?? req.body.hourlyRate;
     const location = req.body.location || 'Unknown';
     const availability = req.body.availability || req.body.name || 'available';
+    const status = req.body.status || 'pending';
     if (salary === undefined) {
       return res.status(400).json({ msg: 'salary/hourlyRate is required' });
     }
 
     const pool = await getPool();
     const resolvedOwnerId = await resolveActorId(pool, ownerId);
+    const maidId = randomUUID();
     const result = await pool
       .request()
+      .input('maid_id', sql.UniqueIdentifier, maidId)
       .input('user_id', sql.UniqueIdentifier, resolvedOwnerId)
       .input('salary', sql.Decimal(10, 2), Number(salary))
       .input('location', sql.NVarChar(160), location)
       .input('availability', sql.NVarChar(40), availability)
+      .input('status', sql.NVarChar(30), status)
       .query(`
-        INSERT INTO dbo.MAIDS (user_id, salary, location, availability)
-        OUTPUT INSERTED.maid_id AS _id, INSERTED.maid_id, INSERTED.user_id,
-               INSERTED.salary, INSERTED.salary AS hourlyRate,
-               INSERTED.location, INSERTED.availability, INSERTED.availability AS name, INSERTED.created_at
-        VALUES (@user_id, @salary, @location, @availability)
+        INSERT INTO dbo.MAIDS (maid_id, user_id, salary, location, availability, status, is_listed)
+        VALUES (@maid_id, @user_id, @salary, @location, @availability, @status, 0);
+
+        SELECT m.maid_id AS _id, m.maid_id, m.user_id,
+               m.salary, m.salary AS hourlyRate,
+               m.location, m.availability, m.availability AS name, m.status, m.created_at
+        FROM dbo.MAIDS m
+        WHERE m.maid_id = @maid_id;
       `);
 
     await logActivity(pool, resolvedOwnerId, 'create_maid', 'MAIDS', result.recordset[0].maid_id);
@@ -927,6 +1052,7 @@ router.get('/house-rent', async (_req, res) => {
   const pool = await getPool();
   const result = await pool.request().query(`
     SELECT house_id AS _id, house_id, user_id, location, rent AS price, rent, rooms,
+           status,
            description, created_at
     FROM dbo.HOUSERENTLISTINGS
     ORDER BY created_at DESC
@@ -944,19 +1070,26 @@ router.post('/house-rent/create', async (req, res) => {
     }
     const rent = Number(req.body.rent ?? req.body.price ?? 0);
     const rooms = Number(req.body.rooms ?? 1);
+    const status = req.body.status || 'pending';
+    const houseId = randomUUID();
 
     const result = await pool
       .request()
+      .input('house_id', sql.UniqueIdentifier, houseId)
       .input('user_id', sql.UniqueIdentifier, resolvedOwnerId)
       .input('location', sql.NVarChar(160), req.body.location || 'Unknown')
       .input('rent', sql.Decimal(10, 2), rent)
       .input('rooms', sql.Int, rooms)
       .input('description', sql.NVarChar(sql.MAX), req.body.description || req.body.title || '')
+      .input('status', sql.NVarChar(30), status)
       .query(`
-        INSERT INTO dbo.HOUSERENTLISTINGS (user_id, location, rent, rooms, description)
-        OUTPUT INSERTED.house_id AS _id, INSERTED.house_id, INSERTED.user_id, INSERTED.location,
-               INSERTED.rent AS price, INSERTED.rent, INSERTED.rooms, INSERTED.description, INSERTED.created_at
-        VALUES (@user_id, @location, @rent, @rooms, @description)
+        INSERT INTO dbo.HOUSERENTLISTINGS (house_id, user_id, location, rent, rooms, description, status, is_listed)
+        VALUES (@house_id, @user_id, @location, @rent, @rooms, @description, @status, 0);
+
+        SELECT h.house_id AS _id, h.house_id, h.user_id, h.location,
+               h.rent AS price, h.rent, h.rooms, h.description, h.status, h.created_at
+        FROM dbo.HOUSERENTLISTINGS h
+        WHERE h.house_id = @house_id;
       `);
 
     await logActivity(pool, resolvedOwnerId, 'create_house_listing', 'HOUSERENTLISTINGS', result.recordset[0].house_id);
@@ -986,9 +1119,8 @@ router.post('/house-rent/contact', async (req, res) => {
   try {
     const houseId = req.body.houseId || req.body.house_id || req.body.listingId || req.body.receiverId;
     const userId = extractUserId(req) || req.body.senderId;
-    const message = req.body.message;
-    if (!houseId || !userId || !message) {
-      return res.status(400).json({ msg: 'houseId, userId and message are required' });
+    if (!houseId || !userId) {
+      return res.status(400).json({ msg: 'houseId and userId are required' });
     }
 
     const pool = await getPool();
@@ -996,14 +1128,13 @@ router.post('/house-rent/contact', async (req, res) => {
       .request()
       .input('house_id', sql.UniqueIdentifier, houseId)
       .input('user_id', sql.UniqueIdentifier, userId)
-      .input('message', sql.NVarChar(sql.MAX), message)
       .query(`
-        INSERT INTO dbo.HOUSECONTACTS (house_id, user_id, message)
-        OUTPUT INSERTED.contact_id AS _id, INSERTED.contact_id, INSERTED.house_id, INSERTED.user_id, INSERTED.message, INSERTED.created_at
-        VALUES (@house_id, @user_id, @message)
+        INSERT INTO dbo.APPLIEDHOUSERENTS (house_id, user_id, status)
+        OUTPUT INSERTED.application_id AS _id, INSERTED.application_id, INSERTED.house_id, INSERTED.user_id, INSERTED.status, INSERTED.applied_at
+        VALUES (@house_id, @user_id, 'pending')
       `);
 
-    await logActivity(pool, userId, 'contact_house', 'HOUSECONTACTS', result.recordset[0].contact_id);
+    await logActivity(pool, userId, 'apply_house_rent', 'APPLIEDHOUSERENTS', result.recordset[0].application_id);
     res.status(201).json(result.recordset[0]);
   } catch (error) {
     res.status(500).json({ msg: 'Failed to create house contact', error: String(error.message || error) });
@@ -1016,12 +1147,12 @@ router.get('/house-rent/contacts/:userId', async (req, res) => {
     .request()
     .input('user_id', sql.UniqueIdentifier, req.params.userId)
     .query(`
-      SELECT c.contact_id AS _id, c.contact_id, c.house_id, c.user_id, c.message, c.created_at,
+      SELECT c.application_id AS _id, c.application_id, c.house_id, c.user_id, c.status, c.applied_at,
              h.location, h.rent, h.rooms
-      FROM dbo.HOUSECONTACTS c
+      FROM dbo.APPLIEDHOUSERENTS c
       JOIN dbo.HOUSERENTLISTINGS h ON h.house_id = c.house_id
       WHERE c.user_id = @user_id
-      ORDER BY c.created_at DESC
+      ORDER BY c.applied_at DESC
     `);
   res.json(result.recordset);
 });
@@ -1112,10 +1243,19 @@ router.post('/subscription', async (req, res) => {
       .input('amount', sql.Decimal(10, 2), Number(amount))
       .input('status', sql.NVarChar(30), status)
       .query(`
+        DECLARE @inserted TABLE (
+          payment_id UNIQUEIDENTIFIER,
+          user_id UNIQUEIDENTIFIER,
+          amount DECIMAL(10, 2),
+          status NVARCHAR(30),
+          payment_date DATETIME2
+        );
+
         INSERT INTO dbo.SUBSCRIPTIONPAYMENTS (user_id, amount, status)
-        OUTPUT INSERTED.payment_id AS _id, INSERTED.payment_id, INSERTED.user_id, INSERTED.amount,
-               INSERTED.status, INSERTED.payment_date
+        OUTPUT INSERTED.payment_id, INSERTED.user_id, INSERTED.amount, INSERTED.status, INSERTED.payment_date INTO @inserted
         VALUES (@user_id, @amount, @status)
+
+        SELECT payment_id AS _id, payment_id, user_id, amount, status, payment_date FROM @inserted;
       `);
 
     await logActivity(pool, resolvedUserId, 'create_subscription_payment', 'SUBSCRIPTIONPAYMENTS', result.recordset[0].payment_id);
@@ -1138,6 +1278,313 @@ router.get('/subscription/payments/:userId', async (req, res) => {
     `);
   res.json(result.recordset);
 });
+
+  router.post('/subscription/process-transaction', async (req, res) => {
+    const pool = await getPool();
+    const tx = new sql.Transaction(pool);
+    try {
+      const userId = req.body.userId || req.body.user_id;
+      const amount = Number(req.body.amount ?? 99);
+      if (!userId || Number.isNaN(amount) || amount <= 0) {
+        return res.status(400).json({ msg: 'Valid userId and amount are required' });
+      }
+
+      await tx.begin();
+
+      const pendingInsert = await tx
+        .request()
+        .input('user_id', sql.UniqueIdentifier, userId)
+        .input('amount', sql.Decimal(10, 2), amount)
+        .query(`
+          DECLARE @inserted TABLE (
+            payment_id UNIQUEIDENTIFIER,
+            user_id UNIQUEIDENTIFIER,
+            amount DECIMAL(10, 2),
+            status NVARCHAR(30),
+            payment_date DATETIME2
+          );
+
+          INSERT INTO dbo.SUBSCRIPTIONPAYMENTS (user_id, amount, status)
+          OUTPUT INSERTED.payment_id, INSERTED.user_id, INSERTED.amount, INSERTED.status, INSERTED.payment_date INTO @inserted
+          VALUES (@user_id, @amount, 'pending')
+
+          SELECT * FROM @inserted;
+        `);
+
+      const pendingPayment = pendingInsert.recordset[0];
+      if (!pendingPayment) {
+        throw new Error('Payment row was not created');
+      }
+
+      const finalized = await tx
+        .request()
+        .input('payment_id', sql.UniqueIdentifier, pendingPayment.payment_id)
+        .query(`
+          DECLARE @updated TABLE (
+            payment_id UNIQUEIDENTIFIER,
+            user_id UNIQUEIDENTIFIER,
+            amount DECIMAL(10, 2),
+            status NVARCHAR(30),
+            payment_date DATETIME2
+          );
+
+          UPDATE dbo.SUBSCRIPTIONPAYMENTS
+          SET status = 'paid'
+          OUTPUT INSERTED.payment_id, INSERTED.user_id, INSERTED.amount, INSERTED.status, INSERTED.payment_date INTO @updated
+          WHERE payment_id = @payment_id
+
+          SELECT payment_id AS _id, payment_id, user_id, amount, status, payment_date FROM @updated;
+        `);
+
+      await logActivity(tx, userId, 'subscription_payment_processed', 'SUBSCRIPTIONPAYMENTS', pendingPayment.payment_id);
+      await tx.commit();
+      return res.status(201).json(finalized.recordset[0]);
+    } catch (error) {
+      if (tx._aborted !== true) {
+        await tx.rollback();
+      }
+      return res.status(500).json({ msg: 'Transactional payment processing failed', error: String(error.message || error) });
+    }
+  });
+
+  router.get('/dashboard/stats', async (_req, res) => {
+    try {
+      const pool = await getPool();
+      let result;
+      try {
+        result = await pool.request().query(`
+          SELECT
+            (SELECT COUNT(*) FROM dbo.BOOKEDTUITIONS)
+            + (SELECT COUNT(*) FROM dbo.BOOKEDMAIDS)
+            + (SELECT COUNT(*) FROM dbo.BOOKEDROOMMATES) AS totalBookings,
+            (SELECT COUNT(*) FROM dbo.APPLIEDTUITIONS WHERE status = 'pending')
+            + (SELECT COUNT(*) FROM dbo.APPLIEDMAIDS WHERE status = 'pending')
+            + (SELECT COUNT(*) FROM dbo.APPLIEDROOMMATES WHERE status = 'pending') AS pendingApplications,
+            (SELECT COUNT(*) FROM dbo.USERS WHERE role = 'student') AS totalStudents,
+            (SELECT ISNULL(SUM(amount), 0) FROM dbo.SUBSCRIPTIONPAYMENTS WHERE status = 'paid') AS totalPayments,
+            (SELECT COUNT(*) FROM dbo.MARKETPLACELISTINGS WHERE status = 'available') AS activeMarketplaceItems;
+
+          SELECT TOP 5
+            t.subject,
+            COUNT(*) AS bookingCount,
+            CAST(AVG(t.salary) AS DECIMAL(10,2)) AS averageSalary
+          FROM dbo.BOOKEDTUITIONS b
+          INNER JOIN dbo.APPLIEDTUITIONS a ON a.application_id = b.application_id
+          INNER JOIN dbo.TUITIONS t ON t.tuition_id = a.tuition_id
+          GROUP BY t.subject
+          HAVING COUNT(*) >= 1
+          ORDER BY bookingCount DESC, averageSalary DESC;
+
+          SELECT TOP 8 action_type, COUNT(*) AS actionCount
+          FROM dbo.USERACTIVITIES
+          GROUP BY action_type
+          ORDER BY actionCount DESC;
+        `);
+      } catch {
+        result = await pool.request().query(`
+          SELECT
+            (SELECT COUNT(*) FROM dbo.BookedTuitions)
+            + (SELECT COUNT(*) FROM dbo.BookedMaids)
+            + (SELECT COUNT(*) FROM dbo.BookedRoommates) AS totalBookings,
+            (SELECT COUNT(*) FROM dbo.AppliedTuitions WHERE Status = 'pending')
+            + (SELECT COUNT(*) FROM dbo.AppliedMaids WHERE Status = 'pending')
+            + (SELECT COUNT(*) FROM dbo.AppliedRoommates WHERE Status = 'pending') AS pendingApplications,
+            (SELECT COUNT(*) FROM dbo.Users WHERE Role = 'student') AS totalStudents,
+            (SELECT ISNULL(SUM(Amount), 0) FROM dbo.SubscriptionPayments WHERE Status = 'paid') AS totalPayments,
+            (SELECT COUNT(*) FROM dbo.MarketplaceListings WHERE Status = 'available') AS activeMarketplaceItems;
+
+          SELECT TOP 5
+            Subject,
+            COUNT(*) AS bookingCount,
+            CAST(AVG(TRY_CONVERT(DECIMAL(10,2), Salary)) AS DECIMAL(10,2)) AS averageSalary
+          FROM dbo.BookedTuitions
+          WHERE TRY_CONVERT(DECIMAL(10,2), Salary) IS NOT NULL
+          GROUP BY Subject
+          HAVING COUNT(*) >= 1
+          ORDER BY bookingCount DESC, averageSalary DESC;
+
+          IF OBJECT_ID('dbo.USERACTIVITIES', 'U') IS NOT NULL
+          BEGIN
+            SELECT TOP 8 action_type, COUNT(*) AS actionCount
+            FROM dbo.USERACTIVITIES
+            GROUP BY action_type
+            ORDER BY actionCount DESC;
+          END
+          ELSE
+          BEGIN
+            SELECT *
+            FROM (
+              SELECT 'booked_tuition' AS action_type, COUNT(*) AS actionCount FROM dbo.BookedTuitions
+              UNION ALL
+              SELECT 'booked_maid' AS action_type, COUNT(*) AS actionCount FROM dbo.BookedMaids
+              UNION ALL
+              SELECT 'booked_roommate' AS action_type, COUNT(*) AS actionCount FROM dbo.BookedRoommates
+              UNION ALL
+              SELECT 'payment' AS action_type, COUNT(*) AS actionCount FROM dbo.SubscriptionPayments
+            ) s
+            ORDER BY actionCount DESC;
+          END
+        `);
+      }
+
+      return res.json({
+        overview: result.recordsets[0]?.[0] || {},
+        topTuitions: result.recordsets[1] || [],
+        activitySummary: result.recordsets[2] || [],
+      });
+    } catch (error) {
+      return res.status(500).json({ msg: 'Failed to fetch dashboard stats', error: String(error.message || error) });
+    }
+  });
+
+  router.get('/sql/features', async (req, res) => {
+    if (!ensureAdmin(req, res)) return;
+
+    try {
+      const pool = await getPool();
+      let result;
+      try {
+        result = await pool.request().query(`
+          -- INNER JOIN demonstration
+          SELECT TOP 10 t.tuition_id, t.subject, u.name AS ownerName
+          FROM dbo.TUITIONS t
+          INNER JOIN dbo.USERS u ON u.user_id = t.user_id
+          ORDER BY t.created_at DESC;
+
+          -- LEFT JOIN demonstration
+          SELECT TOP 10 h.house_id, h.location, c.application_id
+          FROM dbo.HOUSERENTLISTINGS h
+          LEFT JOIN dbo.APPLIEDHOUSERENTS c ON c.house_id = h.house_id
+          ORDER BY h.created_at DESC;
+
+          -- RIGHT JOIN demonstration
+          SELECT TOP 10 c.application_id, c.house_id, h.location
+          FROM dbo.HOUSERENTLISTINGS h
+          RIGHT JOIN dbo.APPLIEDHOUSERENTS c ON c.house_id = h.house_id
+          ORDER BY c.applied_at DESC;
+
+          -- FULL OUTER JOIN demonstration
+          SELECT TOP 10 r.listing_id, a.application_id
+          FROM dbo.ROOMMATELISTINGS r
+          FULL OUTER JOIN dbo.APPLIEDROOMMATES a ON a.listing_id = r.listing_id;
+
+          -- Aggregate + GROUP BY + HAVING demonstration
+          SELECT role, COUNT(*) AS userCount
+          FROM dbo.USERS
+          GROUP BY role
+          HAVING COUNT(*) >= 1;
+
+          -- Non-correlated subquery demonstration
+          SELECT tuition_id, subject, salary
+          FROM dbo.TUITIONS
+          WHERE salary > (SELECT AVG(salary) FROM dbo.TUITIONS);
+
+          -- Correlated subquery demonstration
+          SELECT u.user_id, u.name
+          FROM dbo.USERS u
+          WHERE EXISTS (
+            SELECT 1
+            FROM dbo.APPLIEDTUITIONS a
+            WHERE a.user_id = u.user_id
+          );
+
+          -- CROSS APPLY demonstration
+          SELECT TOP 10 u.user_id, u.name, x.latestAction, x.latestTimestamp
+          FROM dbo.USERS u
+          CROSS APPLY (
+            SELECT TOP 1 ua.action_type AS latestAction, ua.[timestamp] AS latestTimestamp
+            FROM dbo.USERACTIVITIES ua
+            WHERE ua.user_id = u.user_id
+            ORDER BY ua.[timestamp] DESC
+          ) x;
+
+          -- OUTER APPLY demonstration
+          SELECT TOP 10 u.user_id, u.name, y.latestPaymentAmount, y.latestPaymentDate
+          FROM dbo.USERS u
+          OUTER APPLY (
+            SELECT TOP 1 sp.amount AS latestPaymentAmount, sp.payment_date AS latestPaymentDate
+            FROM dbo.SUBSCRIPTIONPAYMENTS sp
+            WHERE sp.user_id = u.user_id
+            ORDER BY sp.payment_date DESC
+          ) y;
+        `);
+      } catch {
+        result = await pool.request().query(`
+          SELECT TOP 10 t.TuitionId, t.Subject, u.FullName AS ownerName
+          FROM dbo.Tuitions t
+          INNER JOIN dbo.Users u ON u.UserId = t.PostedBy
+          ORDER BY t.CreatedAt DESC;
+
+          SELECT TOP 10 u.UserId, u.FullName AS name, c.ContactId
+          FROM dbo.Users u
+          LEFT JOIN dbo.Contacts c ON c.SenderUserId = u.UserId
+          ORDER BY u.CreatedAt DESC;
+
+          SELECT TOP 10 c.ContactId, c.SenderUserId, u.FullName AS senderName
+          FROM dbo.Users u
+          RIGHT JOIN dbo.Contacts c ON c.SenderUserId = u.UserId
+          ORDER BY c.CreatedAt DESC;
+
+          SELECT TOP 10 r.RoommateListingId, a.AppliedToHostId
+          FROM dbo.RoommateListings r
+          FULL OUTER JOIN dbo.AppliedToHosts a ON a.RoommateListingId = r.RoommateListingId;
+
+          SELECT Role AS role, COUNT(*) AS userCount
+          FROM dbo.Users
+          GROUP BY Role
+          HAVING COUNT(*) >= 1;
+
+          SELECT TuitionId, Subject, Salary
+          FROM dbo.Tuitions
+          WHERE TRY_CONVERT(DECIMAL(10,2), Salary) > (
+            SELECT AVG(TRY_CONVERT(DECIMAL(10,2), Salary))
+            FROM dbo.Tuitions
+            WHERE TRY_CONVERT(DECIMAL(10,2), Salary) IS NOT NULL
+          );
+
+          SELECT u.UserId, u.FullName AS name
+          FROM dbo.Users u
+          WHERE EXISTS (
+            SELECT 1
+            FROM dbo.AppliedTuitions a
+            WHERE a.Email = u.Email
+          );
+
+          SELECT TOP 10 u.UserId, u.FullName AS name, x.latestAction, x.latestTimestamp
+          FROM dbo.Users u
+          CROSS APPLY (
+            SELECT TOP 1 at.Status AS latestAction, at.UpdatedAt AS latestTimestamp
+            FROM dbo.AppliedTuitions at
+            WHERE at.Email = u.Email
+            ORDER BY at.UpdatedAt DESC
+          ) x;
+
+          SELECT TOP 10 u.UserId, u.FullName AS name, y.latestPaymentAmount, y.latestPaymentDate
+          FROM dbo.Users u
+          OUTER APPLY (
+            SELECT TOP 1 sp.Amount AS latestPaymentAmount, sp.PaidAt AS latestPaymentDate
+            FROM dbo.SubscriptionPayments sp
+            WHERE sp.UserEmail = u.Email
+            ORDER BY sp.PaidAt DESC
+          ) y;
+        `);
+      }
+
+      return res.json({
+        innerJoin: result.recordsets[0] || [],
+        leftJoin: result.recordsets[1] || [],
+        rightJoin: result.recordsets[2] || [],
+        fullOuterJoin: result.recordsets[3] || [],
+        aggregates: result.recordsets[4] || [],
+        nonCorrelatedSubquery: result.recordsets[5] || [],
+        correlatedSubquery: result.recordsets[6] || [],
+        crossApply: result.recordsets[7] || [],
+        outerApply: result.recordsets[8] || [],
+      });
+    } catch (error) {
+      return res.status(500).json({ msg: 'Failed to run SQL feature demo queries', error: String(error.message || error) });
+    }
+  });
 
 router.get('/activity', async (req, res) => {
   const userId = req.query.userId;

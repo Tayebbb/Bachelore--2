@@ -7,8 +7,6 @@ import { connectDatabase } from './config/database.js';
 
 dotenv.config();
 
-console.log('DB_USER:', process.env.DB_USER, 'DB_PASSWORD:', process.env.DB_PASSWORD);
-
 async function bootstrap() {
   const PORT = process.env.PORT || 5000;
   const retries = Number(process.env.DB_BOOT_RETRIES || 2);

@@ -9,7 +9,6 @@ export default function Tuition(){
   const [tuitions, setTuitions] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [openId, setOpenId] = useState(null)
 
   useEffect(() => {
     setLoading(true)
@@ -18,7 +17,7 @@ export default function Tuition(){
         setTuitions(res.data)
         setLoading(false)
       })
-      .catch(err => {
+      .catch(() => {
         setError('Failed to load tuitions')
         setLoading(false)
       })
@@ -117,12 +116,12 @@ function ApplyModal(){
     if (!userId) { setStatus('Please login first'); return; }
     setStatus('Submitting...');
     try{
-      const res = await axios.post('/api/applied-tuitions', { tuitionId: tuition._id, userId, name, email, contact, message });
+      await axios.post('/api/applied-tuitions', { tuitionId: tuition._id, userId, name, email, contact, message });
       setStatus('Application submitted.');
       setName(''); setEmail(''); setMessage('');
       setContact('');
       setTimeout(()=>{ setVisible(false); setStatus(''); }, 1500);
-    }catch(err){ setStatus('Submission failed'); }
+    }catch{ setStatus('Submission failed'); }
   }
 
   if (!visible) return null;
