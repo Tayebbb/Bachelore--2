@@ -2,12 +2,13 @@ import React, { useEffect, useState } from 'react';
 import api from '../../components/axios.jsx';
 import PopupMessage from '../../components/PopupMessage.jsx';
 import { useNavigate } from 'react-router-dom';
+import { getSubscriptionActive, setSubscriptionActive } from '../../lib/auth';
 
 export default function StudentMarketplacePage() {
   const [rows, setRows] = useState([]);
   const [form, setForm] = useState({ title: '', price: '', condition: 'used' });
   const [popup, setPopup] = useState({ show: false, message: '' });
-  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [isSubscribed, setIsSubscribed] = useState(() => getSubscriptionActive() ?? false);
   const navigate = useNavigate();
 
   const load = async () => {
@@ -20,10 +21,11 @@ export default function StudentMarketplacePage() {
 
     try {
       const { data } = await api.get('/api/student/dashboard');
-      setIsSubscribed(data?.isSubscribed || false);
+      const nextSubscribed = Boolean(data?.isSubscribed);
+      setIsSubscribed(nextSubscribed);
+      setSubscriptionActive(nextSubscribed);
     } catch (err) {
       console.error('Failed to fetch subscription status:', err);
-      setIsSubscribed(false);
     }
   };
 

@@ -2,6 +2,7 @@ const AUTH_KEY = 'bachelore_auth'
 const USER_KEY = 'bachelore_user'
 const TOKEN_KEY = 'bachelore_token'
 const ADMIN_AUTH_KEY = 'bachelore_admin_auth'
+const SUBSCRIPTION_KEY = 'bachelore_subscription_active'
 const EVENT = 'bachelore_auth_change'
 
 export function isAuthed(){
@@ -60,7 +61,22 @@ export function adminLogin(user, token){
 }
 
 export function logout(){
-  try{ localStorage.removeItem(AUTH_KEY); localStorage.removeItem(USER_KEY); localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(ADMIN_AUTH_KEY) }catch(e){}
+  try{ localStorage.removeItem(AUTH_KEY); localStorage.removeItem(USER_KEY); localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(ADMIN_AUTH_KEY); localStorage.removeItem(SUBSCRIPTION_KEY) }catch(e){}
+  try{ window.dispatchEvent(new Event(EVENT)) }catch(e){}
+}
+
+export function getSubscriptionActive(){
+  try{
+    const raw = localStorage.getItem(SUBSCRIPTION_KEY)
+    if (raw === null) return null
+    return raw === '1'
+  }catch(e){ return null }
+}
+
+export function setSubscriptionActive(active){
+  try{
+    localStorage.setItem(SUBSCRIPTION_KEY, active ? '1' : '0')
+  }catch(e){}
   try{ window.dispatchEvent(new Event(EVENT)) }catch(e){}
 }
 

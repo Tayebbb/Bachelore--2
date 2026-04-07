@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import api from '../../components/axios.jsx';
-import { getUser } from '../../lib/auth';
+import { getSubscriptionActive, getUser, setSubscriptionActive } from '../../lib/auth';
 import SubscriptionModal from '../../components/SubscriptionModal.jsx';
 
 export default function StudentDashboardPage() {
@@ -9,7 +9,7 @@ export default function StudentDashboardPage() {
   const [requestStatuses, setRequestStatuses] = useState([]);
   const [myAppliedListings, setMyAppliedListings] = useState([]);
   const [myListings, setMyListings] = useState([]);
-  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [isSubscribed, setIsSubscribed] = useState(() => getSubscriptionActive() ?? false);
   const [subscriptionActionLoading, setSubscriptionActionLoading] = useState(false);
   const [error, setError] = useState(null);
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
@@ -24,7 +24,9 @@ export default function StudentDashboardPage() {
         setRequestStatuses(Array.isArray(data?.requestStatuses) ? data.requestStatuses : []);
         setMyAppliedListings(Array.isArray(data?.myAppliedListings) ? data.myAppliedListings : []);
         setMyListings(Array.isArray(data?.myListingsWithApprovedApplicants) ? data.myListingsWithApprovedApplicants : []);
-        setIsSubscribed(data?.isSubscribed || false);
+        const nextSubscribed = Boolean(data?.isSubscribed);
+        setIsSubscribed(nextSubscribed);
+        setSubscriptionActive(nextSubscribed);
         setError(null);
       } catch (err) {
         console.error('Dashboard load error:', err);
@@ -32,7 +34,6 @@ export default function StudentDashboardPage() {
         setRequestStatuses([]);
         setMyAppliedListings([]);
         setMyListings([]);
-        setIsSubscribed(false);
         if (err.response?.status === 403) {
           setError('Access Denied: You do not have permission to view the student dashboard.');
         } else {
@@ -78,6 +79,7 @@ export default function StudentDashboardPage() {
       setSubscriptionActionLoading(true);
       await api.post('/api/student/subscription/unsubscribe');
       setIsSubscribed(false);
+      setSubscriptionActive(false);
     } catch (err) {
       console.error('Unsubscribe failed:', err);
     } finally {
@@ -90,7 +92,11 @@ export default function StudentDashboardPage() {
       <SubscriptionModal 
         show={showSubscriptionModal} 
         onClose={() => setShowSubscriptionModal(false)}
-        onSuccess={() => setShowSubscriptionModal(false)}
+        onSuccess={() => {
+          setIsSubscribed(true);
+          setSubscriptionActive(true);
+          setShowSubscriptionModal(false);
+        }}
       />
 
       <header className="panel-page-header">

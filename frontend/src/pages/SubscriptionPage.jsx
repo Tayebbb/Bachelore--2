@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import api from '../components/axios.jsx';
 import PopupMessage from '../components/PopupMessage.jsx';
 import { useNavigate } from 'react-router-dom';
-import { getUser } from '../lib/auth';
+import { getUser, setSubscriptionActive } from '../lib/auth';
 
 export default function SubscriptionPage() {
   const [bkashNumber, setBkashNumber] = useState('');
@@ -37,11 +37,10 @@ export default function SubscriptionPage() {
         paymentMethod: 'bkash'
       });
       setPopup({ show: true, message: 'Payment Verified! Your subscription is now active.', type: 'success' });
-      setTimeout(() => {
-        setBkashNumber('');
-        setReference('');
-        navigate('/student/dashboard');
-      }, 2000);
+      setBkashNumber('');
+      setReference('');
+      setSubscriptionActive(true);
+      navigate('/student/dashboard');
     } catch (error) {
       setPopup({ 
         show: true, 

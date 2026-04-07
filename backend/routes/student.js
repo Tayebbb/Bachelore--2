@@ -83,14 +83,22 @@ async function hasActiveSubscription(pool, userId) {
     .request()
     .input('user_id', sql.UniqueIdentifier, userId)
     .query(`
-      SELECT TOP 1 status
-      FROM dbo.SUBSCRIPTIONPAYMENTS
-      WHERE user_id = @user_id
-      ORDER BY payment_date DESC;
+      SELECT TOP 1
+        ISNULL(u.subscription_active, 0) AS subscription_active,
+        latest.status AS latest_status
+      FROM dbo.USERS u
+      OUTER APPLY (
+        SELECT TOP 1 status, payment_date, payment_id
+        FROM dbo.SUBSCRIPTIONPAYMENTS
+        WHERE user_id = @user_id
+        ORDER BY payment_date DESC, payment_id DESC
+      ) latest
+      WHERE u.user_id = @user_id;
     `);
 
-  const latest = String(check.recordset?.[0]?.status || '').toLowerCase();
-  return latest === 'paid';
+  const row = check.recordset?.[0] || {};
+  const latest = String(row.latest_status || '').toLowerCase();
+  return Number(row.subscription_active || 0) === 1 || latest === 'paid';
 }
 
 async function ensureMarketplaceApplicationsTable(poolOrTx) {
@@ -219,233 +227,270 @@ router.get('/dashboard', async (req, res) => {
         ) req
         ORDER BY applied_at DESC;
 
-        SELECT TOP 1 
-          CASE 
-            WHEN status = 'paid' THEN 'active'
+        SELECT TOP 1
+          CASE
+            WHEN ISNULL(u.subscription_active, 0) = 1 THEN 'active'
+            WHEN LOWER(ISNULL(latest.status, '')) = 'paid' THEN 'active'
             ELSE 'inactive'
-          END AS subscription_status
-        FROM dbo.SUBSCRIPTIONPAYMENTS
-        WHERE user_id = @user_id
-        ORDER BY payment_date DESC;
+          END AS subscription_status,
+          ISNULL(u.subscription_active, 0) AS subscription_active,
+          latest.status AS latest_payment_status,
+          latest.payment_date AS latest_payment_date
+        FROM dbo.USERS u
+        OUTER APPLY (
+          SELECT TOP 1 status, payment_date, payment_id
+          FROM dbo.SUBSCRIPTIONPAYMENTS
+          WHERE user_id = @user_id
+          ORDER BY payment_date DESC, payment_id DESC
+        ) latest
+        WHERE u.user_id = @user_id;
       `);
 
-    // Fetch all user's listings with applicant-status summaries.
-    const myListings = [];
+    const emptyCounts = { pending_count: 0, approved_count: 0, booked_count: 0 };
 
-    try {
-      // Roommate listings
-      const roommateResult = await pool.request()
-        .input('user_id', sql.UniqueIdentifier, userId)
-        .query(`
-          SELECT r.listing_id, r.location, r.rent, r.preference, r.[type], r.status, r.created_at, 'roommate' AS listing_type
-          FROM dbo.ROOMMATELISTINGS r
-          WHERE r.user_id = @user_id
-        `);
-
-      if (roommateResult.recordset && Array.isArray(roommateResult.recordset)) {
-        for (const listing of roommateResult.recordset) {
-          const appResult = await pool.request()
-            .input('listing_id', sql.UniqueIdentifier, listing.listing_id)
-            .query(`
-              SELECT a.user_id, a.status, a.applied_at, u.name AS applicant_name, u.email AS applicant_email
-              FROM dbo.APPLIEDROOMMATES a
-              INNER JOIN dbo.USERS u ON u.user_id = a.user_id
-              WHERE LOWER(ISNULL(a.status, 'pending')) IN ('approved', 'booked') AND a.listing_id = @listing_id
-            `);
-
-          const appCounts = await pool.request()
-            .input('listing_id', sql.UniqueIdentifier, listing.listing_id)
-            .query(`
-              SELECT
-                SUM(CASE WHEN LOWER(ISNULL(status, 'pending')) IN ('pending','applied') THEN 1 ELSE 0 END) AS pending_count,
-                SUM(CASE WHEN LOWER(ISNULL(status, 'pending')) = 'approved' THEN 1 ELSE 0 END) AS approved_count,
-                SUM(CASE WHEN LOWER(ISNULL(status, 'pending')) = 'booked' THEN 1 ELSE 0 END) AS booked_count
-              FROM dbo.APPLIEDROOMMATES
-              WHERE listing_id = @listing_id
-            `);
-
-          myListings.push({
-            ...listing,
-            approvedApplicants: appResult.recordset || [],
-            applicationCounts: appCounts.recordset?.[0] || { pending_count: 0, approved_count: 0, booked_count: 0 },
-          });
-        }
+    const mapListingsWithApplications = (listings, applicants, counts) => {
+      const applicantsByListing = new Map();
+      for (const applicant of applicants) {
+        const key = String(applicant.listing_id || '');
+        if (!applicantsByListing.has(key)) applicantsByListing.set(key, []);
+        applicantsByListing.get(key).push(applicant);
       }
-    } catch (err) {
-      console.error('Error fetching roommate listings:', err.message);
-    }
 
-    try {
-      // Tuition listings
-      const tuitionResult = await pool.request()
-        .input('user_id', sql.UniqueIdentifier, userId)
-        .query(`
-          SELECT t.tuition_id AS listing_id, t.subject AS location, t.salary AS rent, NULL AS preference, 'tuition' AS [type], t.status, t.created_at, 'tuition' AS listing_type
-          FROM dbo.TUITIONS t
-          WHERE t.user_id = @user_id
-        `);
-
-      if (tuitionResult.recordset && Array.isArray(tuitionResult.recordset)) {
-        for (const listing of tuitionResult.recordset) {
-          const appResult = await pool.request()
-            .input('tuition_id', sql.UniqueIdentifier, listing.listing_id)
-            .query(`
-              SELECT a.user_id, a.status, a.applied_at, u.name AS applicant_name, u.email AS applicant_email
-              FROM dbo.APPLIEDTUITIONS a
-              INNER JOIN dbo.USERS u ON u.user_id = a.user_id
-              WHERE LOWER(ISNULL(a.status, 'pending')) IN ('approved', 'booked') AND a.tuition_id = @tuition_id
-            `);
-
-          const appCounts = await pool.request()
-            .input('tuition_id', sql.UniqueIdentifier, listing.listing_id)
-            .query(`
-              SELECT
-                SUM(CASE WHEN LOWER(ISNULL(status, 'pending')) IN ('pending','applied') THEN 1 ELSE 0 END) AS pending_count,
-                SUM(CASE WHEN LOWER(ISNULL(status, 'pending')) = 'approved' THEN 1 ELSE 0 END) AS approved_count,
-                SUM(CASE WHEN LOWER(ISNULL(status, 'pending')) = 'booked' THEN 1 ELSE 0 END) AS booked_count
-              FROM dbo.APPLIEDTUITIONS
-              WHERE tuition_id = @tuition_id
-            `);
-
-          myListings.push({
-            ...listing,
-            approvedApplicants: appResult.recordset || [],
-            applicationCounts: appCounts.recordset?.[0] || { pending_count: 0, approved_count: 0, booked_count: 0 },
-          });
-        }
+      const countsByListing = new Map();
+      for (const row of counts) {
+        countsByListing.set(String(row.listing_id || ''), {
+          pending_count: Number(row.pending_count || 0),
+          approved_count: Number(row.approved_count || 0),
+          booked_count: Number(row.booked_count || 0),
+        });
       }
-    } catch (err) {
-      console.error('Error fetching tuition listings:', err.message);
-    }
 
-    try {
-      // Maid listings
-      const maidResult = await pool.request()
-        .input('user_id', sql.UniqueIdentifier, userId)
-        .query(`
-          SELECT m.maid_id AS listing_id, m.location, m.salary AS rent, NULL AS preference, 'maid' AS [type], ISNULL(m.status, 'Approved') AS status, m.created_at, 'maid' AS listing_type
-          FROM dbo.MAIDS m
-          WHERE m.user_id = @user_id
-        `);
+      return listings.map((listing) => {
+        const key = String(listing.listing_id || '');
+        return {
+          ...listing,
+          approvedApplicants: applicantsByListing.get(key) || [],
+          applicationCounts: countsByListing.get(key) || emptyCounts,
+        };
+      });
+    };
 
-      if (maidResult.recordset && Array.isArray(maidResult.recordset)) {
-        for (const listing of maidResult.recordset) {
-          const appResult = await pool.request()
-            .input('maid_id', sql.UniqueIdentifier, listing.listing_id)
-            .query(`
-              SELECT a.user_id, a.status, a.applied_at, u.name AS applicant_name, u.email AS applicant_email
-              FROM dbo.APPLIEDMAIDS a
-              INNER JOIN dbo.USERS u ON u.user_id = a.user_id
-              WHERE LOWER(ISNULL(a.status, 'pending')) IN ('approved', 'booked') AND a.maid_id = @maid_id
-            `);
+    const loadRoommateListings = async () => {
+      const [listingsResult, applicantsResult, countsResult] = await Promise.all([
+        pool.request()
+          .input('user_id', sql.UniqueIdentifier, userId)
+          .query(`
+            SELECT r.listing_id, r.location, r.rent, r.preference, r.[type], r.status, r.created_at, 'roommate' AS listing_type
+            FROM dbo.ROOMMATELISTINGS r
+            WHERE r.user_id = @user_id
+          `),
+        pool.request()
+          .input('user_id', sql.UniqueIdentifier, userId)
+          .query(`
+            SELECT a.listing_id, a.user_id, a.status, a.applied_at, u.name AS applicant_name, u.email AS applicant_email
+            FROM dbo.APPLIEDROOMMATES a
+            INNER JOIN dbo.ROOMMATELISTINGS r ON r.listing_id = a.listing_id
+            INNER JOIN dbo.USERS u ON u.user_id = a.user_id
+            WHERE r.user_id = @user_id
+              AND LOWER(ISNULL(a.status, 'pending')) IN ('approved', 'booked')
+          `),
+        pool.request()
+          .input('user_id', sql.UniqueIdentifier, userId)
+          .query(`
+            SELECT
+              a.listing_id,
+              SUM(CASE WHEN LOWER(ISNULL(a.status, 'pending')) IN ('pending','applied') THEN 1 ELSE 0 END) AS pending_count,
+              SUM(CASE WHEN LOWER(ISNULL(a.status, 'pending')) = 'approved' THEN 1 ELSE 0 END) AS approved_count,
+              SUM(CASE WHEN LOWER(ISNULL(a.status, 'pending')) = 'booked' THEN 1 ELSE 0 END) AS booked_count
+            FROM dbo.APPLIEDROOMMATES a
+            INNER JOIN dbo.ROOMMATELISTINGS r ON r.listing_id = a.listing_id
+            WHERE r.user_id = @user_id
+            GROUP BY a.listing_id
+          `),
+      ]);
 
-          const appCounts = await pool.request()
-            .input('maid_id', sql.UniqueIdentifier, listing.listing_id)
-            .query(`
-              SELECT
-                SUM(CASE WHEN LOWER(ISNULL(status, 'pending')) IN ('pending','applied') THEN 1 ELSE 0 END) AS pending_count,
-                SUM(CASE WHEN LOWER(ISNULL(status, 'pending')) = 'approved' THEN 1 ELSE 0 END) AS approved_count,
-                SUM(CASE WHEN LOWER(ISNULL(status, 'pending')) = 'booked' THEN 1 ELSE 0 END) AS booked_count
-              FROM dbo.APPLIEDMAIDS
-              WHERE maid_id = @maid_id
-            `);
+      return mapListingsWithApplications(
+        listingsResult.recordset || [],
+        applicantsResult.recordset || [],
+        countsResult.recordset || [],
+      );
+    };
 
-          myListings.push({
-            ...listing,
-            approvedApplicants: appResult.recordset || [],
-            applicationCounts: appCounts.recordset?.[0] || { pending_count: 0, approved_count: 0, booked_count: 0 },
-          });
-        }
-      }
-    } catch (err) {
-      console.error('Error fetching maid listings:', err.message);
-    }
+    const loadTuitionListings = async () => {
+      const [listingsResult, applicantsResult, countsResult] = await Promise.all([
+        pool.request()
+          .input('user_id', sql.UniqueIdentifier, userId)
+          .query(`
+            SELECT t.tuition_id AS listing_id, t.subject AS location, t.salary AS rent, NULL AS preference, 'tuition' AS [type], t.status, t.created_at, 'tuition' AS listing_type
+            FROM dbo.TUITIONS t
+            WHERE t.user_id = @user_id
+          `),
+        pool.request()
+          .input('user_id', sql.UniqueIdentifier, userId)
+          .query(`
+            SELECT a.tuition_id AS listing_id, a.user_id, a.status, a.applied_at, u.name AS applicant_name, u.email AS applicant_email
+            FROM dbo.APPLIEDTUITIONS a
+            INNER JOIN dbo.TUITIONS t ON t.tuition_id = a.tuition_id
+            INNER JOIN dbo.USERS u ON u.user_id = a.user_id
+            WHERE t.user_id = @user_id
+              AND LOWER(ISNULL(a.status, 'pending')) IN ('approved', 'booked')
+          `),
+        pool.request()
+          .input('user_id', sql.UniqueIdentifier, userId)
+          .query(`
+            SELECT
+              a.tuition_id AS listing_id,
+              SUM(CASE WHEN LOWER(ISNULL(a.status, 'pending')) IN ('pending','applied') THEN 1 ELSE 0 END) AS pending_count,
+              SUM(CASE WHEN LOWER(ISNULL(a.status, 'pending')) = 'approved' THEN 1 ELSE 0 END) AS approved_count,
+              SUM(CASE WHEN LOWER(ISNULL(a.status, 'pending')) = 'booked' THEN 1 ELSE 0 END) AS booked_count
+            FROM dbo.APPLIEDTUITIONS a
+            INNER JOIN dbo.TUITIONS t ON t.tuition_id = a.tuition_id
+            WHERE t.user_id = @user_id
+            GROUP BY a.tuition_id
+          `),
+      ]);
 
-    try {
-      // House rent listings
-      const houseResult = await pool.request()
-        .input('user_id', sql.UniqueIdentifier, userId)
-        .query(`
-          SELECT h.house_id AS listing_id, h.location, h.rent, NULL AS preference, 'house' AS [type], ISNULL(h.status, 'Approved') AS status, h.created_at, 'house' AS listing_type
-          FROM dbo.HOUSERENTLISTINGS h
-          WHERE h.user_id = @user_id
-        `);
+      return mapListingsWithApplications(
+        listingsResult.recordset || [],
+        applicantsResult.recordset || [],
+        countsResult.recordset || [],
+      );
+    };
 
-      if (houseResult.recordset && Array.isArray(houseResult.recordset)) {
-        for (const listing of houseResult.recordset) {
-          const appResult = await pool.request()
-            .input('house_id', sql.UniqueIdentifier, listing.listing_id)
-            .query(`
-              SELECT a.user_id, a.status, a.applied_at, u.name AS applicant_name, u.email AS applicant_email
-              FROM dbo.APPLIEDHOUSERENTS a
-              INNER JOIN dbo.USERS u ON u.user_id = a.user_id
-              WHERE LOWER(ISNULL(a.status, 'pending')) IN ('approved', 'booked') AND a.house_id = @house_id
-            `);
+    const loadMaidListings = async () => {
+      const [listingsResult, applicantsResult, countsResult] = await Promise.all([
+        pool.request()
+          .input('user_id', sql.UniqueIdentifier, userId)
+          .query(`
+            SELECT m.maid_id AS listing_id, m.location, m.salary AS rent, NULL AS preference, 'maid' AS [type], ISNULL(m.status, 'Approved') AS status, m.created_at, 'maid' AS listing_type
+            FROM dbo.MAIDS m
+            WHERE m.user_id = @user_id
+          `),
+        pool.request()
+          .input('user_id', sql.UniqueIdentifier, userId)
+          .query(`
+            SELECT a.maid_id AS listing_id, a.user_id, a.status, a.applied_at, u.name AS applicant_name, u.email AS applicant_email
+            FROM dbo.APPLIEDMAIDS a
+            INNER JOIN dbo.MAIDS m ON m.maid_id = a.maid_id
+            INNER JOIN dbo.USERS u ON u.user_id = a.user_id
+            WHERE m.user_id = @user_id
+              AND LOWER(ISNULL(a.status, 'pending')) IN ('approved', 'booked')
+          `),
+        pool.request()
+          .input('user_id', sql.UniqueIdentifier, userId)
+          .query(`
+            SELECT
+              a.maid_id AS listing_id,
+              SUM(CASE WHEN LOWER(ISNULL(a.status, 'pending')) IN ('pending','applied') THEN 1 ELSE 0 END) AS pending_count,
+              SUM(CASE WHEN LOWER(ISNULL(a.status, 'pending')) = 'approved' THEN 1 ELSE 0 END) AS approved_count,
+              SUM(CASE WHEN LOWER(ISNULL(a.status, 'pending')) = 'booked' THEN 1 ELSE 0 END) AS booked_count
+            FROM dbo.APPLIEDMAIDS a
+            INNER JOIN dbo.MAIDS m ON m.maid_id = a.maid_id
+            WHERE m.user_id = @user_id
+            GROUP BY a.maid_id
+          `),
+      ]);
 
-          const appCounts = await pool.request()
-            .input('house_id', sql.UniqueIdentifier, listing.listing_id)
-            .query(`
-              SELECT
-                SUM(CASE WHEN LOWER(ISNULL(status, 'pending')) IN ('pending','applied') THEN 1 ELSE 0 END) AS pending_count,
-                SUM(CASE WHEN LOWER(ISNULL(status, 'pending')) = 'approved' THEN 1 ELSE 0 END) AS approved_count,
-                SUM(CASE WHEN LOWER(ISNULL(status, 'pending')) = 'booked' THEN 1 ELSE 0 END) AS booked_count
-              FROM dbo.APPLIEDHOUSERENTS
-              WHERE house_id = @house_id
-            `);
+      return mapListingsWithApplications(
+        listingsResult.recordset || [],
+        applicantsResult.recordset || [],
+        countsResult.recordset || [],
+      );
+    };
 
-          myListings.push({
-            ...listing,
-            approvedApplicants: appResult.recordset || [],
-            applicationCounts: appCounts.recordset?.[0] || { pending_count: 0, approved_count: 0, booked_count: 0 },
-          });
-        }
-      }
-    } catch (err) {
-      console.error('Error fetching house rent listings:', err.message);
-    }
+    const loadHouseListings = async () => {
+      const [listingsResult, applicantsResult, countsResult] = await Promise.all([
+        pool.request()
+          .input('user_id', sql.UniqueIdentifier, userId)
+          .query(`
+            SELECT h.house_id AS listing_id, h.location, h.rent, NULL AS preference, 'house' AS [type], ISNULL(h.status, 'Approved') AS status, h.created_at, 'house' AS listing_type
+            FROM dbo.HOUSERENTLISTINGS h
+            WHERE h.user_id = @user_id
+          `),
+        pool.request()
+          .input('user_id', sql.UniqueIdentifier, userId)
+          .query(`
+            SELECT a.house_id AS listing_id, a.user_id, a.status, a.applied_at, u.name AS applicant_name, u.email AS applicant_email
+            FROM dbo.APPLIEDHOUSERENTS a
+            INNER JOIN dbo.HOUSERENTLISTINGS h ON h.house_id = a.house_id
+            INNER JOIN dbo.USERS u ON u.user_id = a.user_id
+            WHERE h.user_id = @user_id
+              AND LOWER(ISNULL(a.status, 'pending')) IN ('approved', 'booked')
+          `),
+        pool.request()
+          .input('user_id', sql.UniqueIdentifier, userId)
+          .query(`
+            SELECT
+              a.house_id AS listing_id,
+              SUM(CASE WHEN LOWER(ISNULL(a.status, 'pending')) IN ('pending','applied') THEN 1 ELSE 0 END) AS pending_count,
+              SUM(CASE WHEN LOWER(ISNULL(a.status, 'pending')) = 'approved' THEN 1 ELSE 0 END) AS approved_count,
+              SUM(CASE WHEN LOWER(ISNULL(a.status, 'pending')) = 'booked' THEN 1 ELSE 0 END) AS booked_count
+            FROM dbo.APPLIEDHOUSERENTS a
+            INNER JOIN dbo.HOUSERENTLISTINGS h ON h.house_id = a.house_id
+            WHERE h.user_id = @user_id
+            GROUP BY a.house_id
+          `),
+      ]);
 
-    try {
-      // Marketplace listings
-      const marketplaceResult = await pool.request()
-        .input('user_id', sql.UniqueIdentifier, userId)
-        .query(`
-          SELECT m.item_id AS listing_id, m.title AS location, m.price AS rent, NULL AS preference, 'marketplace' AS [type], m.status, m.created_at, 'marketplace' AS listing_type
-          FROM dbo.MARKETPLACELISTINGS m
-          WHERE m.user_id = @user_id
-        `);
+      return mapListingsWithApplications(
+        listingsResult.recordset || [],
+        applicantsResult.recordset || [],
+        countsResult.recordset || [],
+      );
+    };
 
-      if (marketplaceResult.recordset && Array.isArray(marketplaceResult.recordset)) {
-        for (const listing of marketplaceResult.recordset) {
-          const appResult = await pool.request()
-            .input('item_id', sql.UniqueIdentifier, listing.listing_id)
-            .query(`
-              SELECT a.user_id, a.status, a.applied_at, u.name AS applicant_name, u.email AS applicant_email
-              FROM dbo.APPLIEDMARKETPLACE a
-              INNER JOIN dbo.USERS u ON u.user_id = a.user_id
-              WHERE LOWER(ISNULL(a.status, 'pending')) IN ('approved', 'booked') AND a.item_id = @item_id
-            `);
+    const loadMarketplaceListings = async () => {
+      const [listingsResult, applicantsResult, countsResult] = await Promise.all([
+        pool.request()
+          .input('user_id', sql.UniqueIdentifier, userId)
+          .query(`
+            SELECT m.item_id AS listing_id, m.title AS location, m.price AS rent, NULL AS preference, 'marketplace' AS [type], m.status, m.created_at, 'marketplace' AS listing_type
+            FROM dbo.MARKETPLACELISTINGS m
+            WHERE m.user_id = @user_id
+          `),
+        pool.request()
+          .input('user_id', sql.UniqueIdentifier, userId)
+          .query(`
+            SELECT a.item_id AS listing_id, a.user_id, a.status, a.applied_at, u.name AS applicant_name, u.email AS applicant_email
+            FROM dbo.APPLIEDMARKETPLACE a
+            INNER JOIN dbo.MARKETPLACELISTINGS m ON m.item_id = a.item_id
+            INNER JOIN dbo.USERS u ON u.user_id = a.user_id
+            WHERE m.user_id = @user_id
+              AND LOWER(ISNULL(a.status, 'pending')) IN ('approved', 'booked')
+          `),
+        pool.request()
+          .input('user_id', sql.UniqueIdentifier, userId)
+          .query(`
+            SELECT
+              a.item_id AS listing_id,
+              SUM(CASE WHEN LOWER(ISNULL(a.status, 'pending')) IN ('pending','applied') THEN 1 ELSE 0 END) AS pending_count,
+              SUM(CASE WHEN LOWER(ISNULL(a.status, 'pending')) = 'approved' THEN 1 ELSE 0 END) AS approved_count,
+              SUM(CASE WHEN LOWER(ISNULL(a.status, 'pending')) = 'booked' THEN 1 ELSE 0 END) AS booked_count
+            FROM dbo.APPLIEDMARKETPLACE a
+            INNER JOIN dbo.MARKETPLACELISTINGS m ON m.item_id = a.item_id
+            WHERE m.user_id = @user_id
+            GROUP BY a.item_id
+          `),
+      ]);
 
-          const appCounts = await pool.request()
-            .input('item_id', sql.UniqueIdentifier, listing.listing_id)
-            .query(`
-              SELECT
-                SUM(CASE WHEN LOWER(ISNULL(status, 'pending')) IN ('pending','applied') THEN 1 ELSE 0 END) AS pending_count,
-                SUM(CASE WHEN LOWER(ISNULL(status, 'pending')) = 'approved' THEN 1 ELSE 0 END) AS approved_count,
-                SUM(CASE WHEN LOWER(ISNULL(status, 'pending')) = 'booked' THEN 1 ELSE 0 END) AS booked_count
-              FROM dbo.APPLIEDMARKETPLACE
-              WHERE item_id = @item_id
-            `);
+      return mapListingsWithApplications(
+        listingsResult.recordset || [],
+        applicantsResult.recordset || [],
+        countsResult.recordset || [],
+      );
+    };
 
-          myListings.push({
-            ...listing,
-            approvedApplicants: appResult.recordset || [],
-            applicationCounts: appCounts.recordset?.[0] || { pending_count: 0, approved_count: 0, booked_count: 0 },
-          });
-        }
-      }
-    } catch (err) {
-      console.error('Error fetching marketplace listings:', err.message);
-    }
+    const settledListings = await Promise.allSettled([
+      loadRoommateListings(),
+      loadTuitionListings(),
+      loadMaidListings(),
+      loadHouseListings(),
+      loadMarketplaceListings(),
+    ]);
+
+    const myListings = settledListings
+      .filter((result) => result.status === 'fulfilled')
+      .flatMap((result) => result.value);
 
     const overview = result.recordsets?.[0]?.[0] || {};
     const requestStatuses = result.recordsets?.[1] || [];
@@ -471,7 +516,7 @@ router.get('/dashboard', async (req, res) => {
       requestStatuses,
       myAppliedListings,
       subscriptionStatus: subscriptionData?.subscription_status || 'inactive',
-      isSubscribed: subscriptionData?.subscription_status === 'active',
+      isSubscribed: subscriptionData?.subscription_status === 'active' || Number(subscriptionData?.subscription_active || 0) === 1,
       myListingsWithApprovedApplicants: myListings,
       myListingsSummary,
     });

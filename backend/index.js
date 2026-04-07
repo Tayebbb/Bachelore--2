@@ -5,7 +5,7 @@ import { getPool } from './db/connection.js';
 import { ensureSchema } from './db/schema.js';
 import { connectDatabase } from './config/database.js';
 
-dotenv.config();
+dotenv.config({ override: true });
 
 async function bootstrap() {
   const PORT = process.env.PORT || 5000;

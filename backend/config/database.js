@@ -2,15 +2,40 @@ import dotenv from 'dotenv';
 import { Sequelize } from 'sequelize';
 import tedious from 'tedious';
 
-dotenv.config();
+dotenv.config({ override: true });
+
+function normalizeSqlEndpoint(rawHost, rawInstance) {
+  const hostInput = String(rawHost || '').trim();
+  const instanceInput = String(rawInstance || '').trim();
+  const lowerHost = hostInput.toLowerCase();
+
+  if (lowerHost === 'sqlexpress' || lowerHost === '.\\sqlexpress' || lowerHost === '(local)\\sqlexpress') {
+    return { host: '100.111.12.54', instanceName: instanceInput || 'SQLEXPRESS' };
+  }
+
+  if (hostInput.includes('\\')) {
+    const [serverPart, instancePart] = hostInput.split('\\');
+    return {
+      host: serverPart || '100.111.12.54',
+      instanceName: instanceInput || instancePart || '',
+    };
+  }
+
+  return {
+    host: hostInput || '100.111.12.54',
+    instanceName: instanceInput || '',
+  };
+}
+
+const normalizedEndpoint = normalizeSqlEndpoint(process.env.DB_HOST, process.env.DB_INSTANCE);
 
 const dbConfig = {
-  host: process.env.DB_HOST || 'localhost',
+  host: normalizedEndpoint.host,
   port: process.env.DB_PORT ? Number(process.env.DB_PORT) : undefined,
   database: process.env.DB_NAME || 'BACHELORE',
   username: process.env.DB_USER || 'bachelore_user',
   password: process.env.DB_PASSWORD || '',
-  instanceName: process.env.DB_INSTANCE || '',
+  instanceName: normalizedEndpoint.instanceName,
 };
 
 const useInstance = Boolean(dbConfig.instanceName) && !dbConfig.port;

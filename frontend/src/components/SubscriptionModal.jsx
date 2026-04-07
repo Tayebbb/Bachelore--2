@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import api from './axios.jsx';
 import PopupMessage from './PopupMessage.jsx';
-import { getUser } from '../lib/auth';
+import { getUser, setSubscriptionActive } from '../lib/auth';
 
 export default function SubscriptionModal({ show, onClose, onSuccess }) {
   const [bkashNumber, setBkashNumber] = useState('');
@@ -38,13 +38,11 @@ export default function SubscriptionModal({ show, onClose, onSuccess }) {
       });
 
       setPopup({ show: true, message: 'Payment Verified! Your subscription is now active.', type: 'success' });
-      
-      setTimeout(() => {
-        setBkashNumber('');
-        setReference('');
-        onSuccess && onSuccess();
-        onClose();
-      }, 2000);
+      setBkashNumber('');
+      setReference('');
+      setSubscriptionActive(true);
+      onSuccess && onSuccess();
+      onClose();
     } catch (error) {
       console.error('Payment error:', error);
       setPopup({ 

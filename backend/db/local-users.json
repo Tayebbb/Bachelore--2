@@ -28,5 +28,20 @@
       "semester": "Spring",
       "eduEmail": "enid.cse.123@aust.edu"
     }
+  },
+  {
+    "user_id": "157de89d-2d03-4699-b65c-8dd37e5369f2",
+    "name": "Aesope Hasan",
+    "email": "aesope32@aust.edu",
+    "password_hash": "$2a$10$IN/1LgDCxpNFLt7hrmi66.mTl0YGwKnhPuS2ObN61gIccSGTVB8nC",
+    "role": "student",
+    "created_at": "2026-04-07T07:15:43.535Z",
+    "profile": {
+      "phone": "+8801883267172",
+      "university": null,
+      "year": null,
+      "semester": null,
+      "eduEmail": null
+    }
   }
 ]

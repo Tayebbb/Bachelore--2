@@ -2,12 +2,13 @@ import React, { useEffect, useState } from 'react';
 import api from '../../components/axios.jsx';
 import PopupMessage from '../../components/PopupMessage.jsx';
 import SubscriptionModal from '../../components/SubscriptionModal.jsx';
+import { getSubscriptionActive, setSubscriptionActive } from '../../lib/auth';
 
 export default function StudentRoommatesPage() {
   const [rows, setRows] = useState([]);
   const [form, setForm] = useState({ location: '', rent: '', preference: '', type: 'host' });
   const [popup, setPopup] = useState({ show: false, message: '' });
-  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [isSubscribed, setIsSubscribed] = useState(() => getSubscriptionActive() ?? false);
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
 
   const load = async () => {
@@ -21,10 +22,11 @@ export default function StudentRoommatesPage() {
     // Fetch subscription status
     try {
       const { data } = await api.get('/api/student/dashboard');
-      setIsSubscribed(data?.isSubscribed || false);
+      const nextSubscribed = Boolean(data?.isSubscribed);
+      setIsSubscribed(nextSubscribed);
+      setSubscriptionActive(nextSubscribed);
     } catch (err) {
       console.error('Failed to fetch subscription status:', err);
-      setIsSubscribed(false);
     }
   };
 
@@ -69,6 +71,8 @@ export default function StudentRoommatesPage() {
         show={showSubscriptionModal} 
         onClose={() => setShowSubscriptionModal(false)}
         onSuccess={() => {
+          setIsSubscribed(true);
+          setSubscriptionActive(true);
           setShowSubscriptionModal(false);
           load();
         }}
