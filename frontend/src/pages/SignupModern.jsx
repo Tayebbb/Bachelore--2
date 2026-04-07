@@ -116,7 +116,7 @@ export default function SignupModern() {
               };
               const { data } = await axios.post('/api/signup', payload);
               if (data?.user) {
-                authLogin(data.user)
+                authLogin(data.user, data.token)
                 navigate('/student/dashboard', { replace: true });
               }
             } catch {

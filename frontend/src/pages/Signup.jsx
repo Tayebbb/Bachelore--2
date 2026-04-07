@@ -92,12 +92,12 @@ export default function Signup(){
       })
       // backend returns { msg, user }
       if(data && data.user){
-        authLogin(data.user)
+        authLogin(data.user, data.token)
         setStatus('success')
         setError('')
         navigate('/student/dashboard')
       } else if(data && data.msg){
-        authLogin(data.user || { name: fullName, email, role: 'student' })
+        authLogin(data.user || { name: fullName, email, role: 'student' }, data.token)
         setStatus('success')
         setError('')
         navigate('/student/dashboard')

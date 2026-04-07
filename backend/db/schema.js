@@ -2,9 +2,11 @@ import { getPool } from './connection.js';
 
 const schemaSql = `
 IF OBJECT_ID('dbo.BOOKEDROOMMATES', 'U') IS NOT NULL DROP TABLE dbo.BOOKEDROOMMATES;
+IF OBJECT_ID('dbo.BOOKEDHOUSERENTS', 'U') IS NOT NULL DROP TABLE dbo.BOOKEDHOUSERENTS;
 IF OBJECT_ID('dbo.BOOKEDMAIDS', 'U') IS NOT NULL DROP TABLE dbo.BOOKEDMAIDS;
 IF OBJECT_ID('dbo.BOOKEDTUITIONS', 'U') IS NOT NULL DROP TABLE dbo.BOOKEDTUITIONS;
 IF OBJECT_ID('dbo.APPLIEDROOMMATES', 'U') IS NOT NULL DROP TABLE dbo.APPLIEDROOMMATES;
+IF OBJECT_ID('dbo.APPLIEDHOUSERENTS', 'U') IS NOT NULL DROP TABLE dbo.APPLIEDHOUSERENTS;
 IF OBJECT_ID('dbo.APPLIEDMAIDS', 'U') IS NOT NULL DROP TABLE dbo.APPLIEDMAIDS;
 IF OBJECT_ID('dbo.APPLIEDTUITIONS', 'U') IS NOT NULL DROP TABLE dbo.APPLIEDTUITIONS;
 IF OBJECT_ID('dbo.HOUSECONTACTS', 'U') IS NOT NULL DROP TABLE dbo.HOUSECONTACTS;
@@ -63,10 +65,11 @@ CREATE TABLE dbo.TUITIONS (
   subject NVARCHAR(140) NOT NULL,
   salary DECIMAL(10, 2) NOT NULL,
   location NVARCHAR(160) NOT NULL,
-  status NVARCHAR(30) NOT NULL DEFAULT 'open',
+  status NVARCHAR(30) NOT NULL DEFAULT 'pending',
+  is_listed BIT NOT NULL DEFAULT (0),
+  is_locked BIT NOT NULL DEFAULT (0),
   created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
-  CONSTRAINT FK_TUITIONS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE,
-  CONSTRAINT CK_TUITIONS_STATUS_BASE CHECK (LOWER(status) IN ('pending', 'approved', 'rejected', 'open', 'closed', 'booked'))
+  CONSTRAINT FK_TUITIONS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE
 );
 
 CREATE TABLE dbo.APPLIEDTUITIONS (
@@ -95,6 +98,9 @@ CREATE TABLE dbo.MAIDS (
   salary DECIMAL(10, 2) NOT NULL,
   location NVARCHAR(160) NOT NULL,
   availability NVARCHAR(40) NOT NULL,
+  status NVARCHAR(30) NOT NULL DEFAULT 'pending',
+  is_listed BIT NOT NULL DEFAULT (0),
+  is_locked BIT NOT NULL DEFAULT (0),
   created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
   CONSTRAINT FK_MAIDS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE,
   CONSTRAINT CK_MAIDS_SALARY_BASE CHECK (salary > 0)
@@ -127,6 +133,8 @@ CREATE TABLE dbo.ROOMMATELISTINGS (
   rent DECIMAL(10, 2) NOT NULL,
   preference NVARCHAR(MAX) NULL,
   [type] NVARCHAR(20) NOT NULL CHECK ([type] IN ('host', 'seeker')),
+  is_listed BIT NOT NULL DEFAULT (0),
+  is_locked BIT NOT NULL DEFAULT (0),
   created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
   CONSTRAINT FK_ROOMMATELISTINGS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE,
   CONSTRAINT CK_ROOMMATELISTINGS_RENT_BASE CHECK (rent > 0)
@@ -159,20 +167,33 @@ CREATE TABLE dbo.HOUSERENTLISTINGS (
   rent DECIMAL(10, 2) NOT NULL,
   rooms INT NOT NULL,
   description NVARCHAR(MAX) NULL,
+  status NVARCHAR(30) NOT NULL DEFAULT 'pending',
+  is_listed BIT NOT NULL DEFAULT (0),
+  is_locked BIT NOT NULL DEFAULT (0),
   created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
   CONSTRAINT FK_HOUSERENTLISTINGS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE,
   CONSTRAINT CK_HOUSERENT_ROOMS_BASE CHECK (rooms > 0),
   CONSTRAINT CK_HOUSERENT_RENT_BASE CHECK (rent > 0)
 );
 
-CREATE TABLE dbo.HOUSECONTACTS (
-  contact_id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT NEWID(),
+CREATE TABLE dbo.APPLIEDHOUSERENTS (
+  application_id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT NEWID(),
   house_id UNIQUEIDENTIFIER NOT NULL,
   user_id UNIQUEIDENTIFIER NOT NULL,
-  message NVARCHAR(MAX) NOT NULL,
-  created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
-  CONSTRAINT FK_HOUSECONTACTS_HOUSERENTLISTINGS FOREIGN KEY (house_id) REFERENCES dbo.HOUSERENTLISTINGS(house_id) ON UPDATE CASCADE ON DELETE CASCADE,
-  CONSTRAINT FK_HOUSECONTACTS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE
+  status NVARCHAR(30) NOT NULL DEFAULT 'pending',
+  applied_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+  CONSTRAINT FK_APPLIEDHOUSERENTS_HOUSES FOREIGN KEY (house_id) REFERENCES dbo.HOUSERENTLISTINGS(house_id) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT FK_APPLIEDHOUSERENTS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT CK_APPLIEDHOUSERENTS_STATUS_BASE CHECK (LOWER(status) IN ('pending', 'approved', 'rejected'))
+);
+
+CREATE TABLE dbo.BOOKEDHOUSERENTS (
+  booking_id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT NEWID(),
+  application_id UNIQUEIDENTIFIER NOT NULL UNIQUE,
+  booking_status NVARCHAR(20) NOT NULL DEFAULT 'confirmed',
+  confirmed_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+  CONSTRAINT FK_BOOKEDHOUSERENTS_APPLIEDHOUSERENTS FOREIGN KEY (application_id) REFERENCES dbo.APPLIEDHOUSERENTS(application_id) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT CK_BOOKEDHOUSERENTS_STATUS_BASE CHECK (LOWER(booking_status) IN ('confirmed', 'cancelled', 'completed'))
 );
 
 CREATE TABLE dbo.MARKETPLACELISTINGS (
@@ -225,14 +246,97 @@ BEGIN
   ALTER TABLE dbo.MAIDS ADD status NVARCHAR(30) NOT NULL CONSTRAINT DF_MAIDS_STATUS DEFAULT ('Pending');
 END;
 
+IF COL_LENGTH('dbo.MAIDS', 'is_locked') IS NULL
+BEGIN
+  ALTER TABLE dbo.MAIDS ADD is_locked BIT NOT NULL CONSTRAINT DF_MAIDS_IS_LOCKED DEFAULT (0);
+END;
+
 IF COL_LENGTH('dbo.ROOMMATELISTINGS', 'status') IS NULL
 BEGIN
   ALTER TABLE dbo.ROOMMATELISTINGS ADD status NVARCHAR(30) NOT NULL CONSTRAINT DF_ROOMMATES_STATUS DEFAULT ('Pending');
 END;
 
+IF COL_LENGTH('dbo.ROOMMATELISTINGS', 'is_locked') IS NULL
+BEGIN
+  ALTER TABLE dbo.ROOMMATELISTINGS ADD is_locked BIT NOT NULL CONSTRAINT DF_ROOMMATES_IS_LOCKED DEFAULT (0);
+END;
+
+IF COL_LENGTH('dbo.ROOMMATELISTINGS', 'is_listed') IS NULL
+BEGIN
+  ALTER TABLE dbo.ROOMMATELISTINGS ADD is_listed BIT NOT NULL CONSTRAINT DF_ROOMMATES_IS_LISTED DEFAULT (0);
+END;
+
 IF COL_LENGTH('dbo.HOUSERENTLISTINGS', 'status') IS NULL
 BEGIN
   ALTER TABLE dbo.HOUSERENTLISTINGS ADD status NVARCHAR(30) NOT NULL CONSTRAINT DF_HOUSE_STATUS DEFAULT ('Pending');
+END;
+
+IF COL_LENGTH('dbo.HOUSERENTLISTINGS', 'is_locked') IS NULL
+BEGIN
+  ALTER TABLE dbo.HOUSERENTLISTINGS ADD is_locked BIT NOT NULL CONSTRAINT DF_HOUSE_IS_LOCKED DEFAULT (0);
+END;
+
+IF COL_LENGTH('dbo.HOUSECONTACTS', 'status') IS NULL
+BEGIN
+  ALTER TABLE dbo.HOUSECONTACTS ADD status NVARCHAR(30) NOT NULL CONSTRAINT DF_HOUSECONTACTS_STATUS DEFAULT ('pending');
+END;
+
+IF COL_LENGTH('dbo.TUITIONS', 'is_locked') IS NULL
+BEGIN
+  ALTER TABLE dbo.TUITIONS ADD is_locked BIT NOT NULL CONSTRAINT DF_TUITIONS_IS_LOCKED DEFAULT (0);
+END;
+
+IF COL_LENGTH('dbo.TUITIONS', 'is_listed') IS NULL
+BEGIN
+  ALTER TABLE dbo.TUITIONS ADD is_listed BIT NOT NULL CONSTRAINT DF_TUITIONS_IS_LISTED DEFAULT (0);
+END;
+
+IF COL_LENGTH('dbo.MAIDS', 'is_listed') IS NULL
+BEGIN
+  ALTER TABLE dbo.MAIDS ADD is_listed BIT NOT NULL CONSTRAINT DF_MAIDS_IS_LISTED DEFAULT (0);
+END;
+
+IF COL_LENGTH('dbo.HOUSERENTLISTINGS', 'is_listed') IS NULL
+BEGIN
+  ALTER TABLE dbo.HOUSERENTLISTINGS ADD is_listed BIT NOT NULL CONSTRAINT DF_HOUSES_IS_LISTED DEFAULT (0);
+END;
+
+IF OBJECT_ID('dbo.APPLIEDHOUSERENTS', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.APPLIEDHOUSERENTS (
+    application_id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT NEWID(),
+    house_id UNIQUEIDENTIFIER NOT NULL,
+    user_id UNIQUEIDENTIFIER NOT NULL,
+    status NVARCHAR(30) NOT NULL DEFAULT 'pending',
+    applied_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT FK_APPLIEDHOUSERENTS_HOUSES FOREIGN KEY (house_id) REFERENCES dbo.HOUSERENTLISTINGS(house_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT FK_APPLIEDHOUSERENTS_USERS FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT CK_APPLIEDHOUSERENTS_STATUS_DOMAIN CHECK (LOWER(status) IN ('pending', 'approved', 'rejected'))
+  );
+END;
+
+IF OBJECT_ID('dbo.BOOKEDHOUSERENTS', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.BOOKEDHOUSERENTS (
+    booking_id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT NEWID(),
+    application_id UNIQUEIDENTIFIER NOT NULL UNIQUE,
+    booking_status NVARCHAR(20) NOT NULL DEFAULT 'confirmed',
+    confirmed_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT FK_BOOKEDHOUSERENTS_APPLIEDHOUSERENTS FOREIGN KEY (application_id) REFERENCES dbo.APPLIEDHOUSERENTS(application_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT CK_BOOKEDHOUSERENTS_STATUS_DOMAIN CHECK (LOWER(booking_status) IN ('confirmed', 'cancelled', 'completed'))
+  );
+END;
+
+IF OBJECT_ID('dbo.HOUSECONTACTS', 'U') IS NOT NULL AND EXISTS (SELECT 1 FROM dbo.HOUSECONTACTS)
+BEGIN
+  INSERT INTO dbo.APPLIEDHOUSERENTS (application_id, house_id, user_id, status, applied_at)
+  SELECT hc.contact_id, hc.house_id, hc.user_id,
+         CASE WHEN LOWER(ISNULL(hc.status, 'pending')) IN ('pending', 'approved', 'rejected') THEN LOWER(ISNULL(hc.status, 'pending')) ELSE 'pending' END,
+         ISNULL(hc.created_at, SYSUTCDATETIME())
+  FROM dbo.HOUSECONTACTS hc
+  WHERE NOT EXISTS (
+    SELECT 1 FROM dbo.APPLIEDHOUSERENTS a WHERE a.application_id = hc.contact_id
+  );
 END;
 
 IF COL_LENGTH('dbo.BOOKEDTUITIONS', 'booking_status') IS NULL
@@ -414,8 +518,43 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_AM_USER_STATUS_APPLIED
   CREATE INDEX IX_AM_USER_STATUS_APPLIED ON dbo.APPLIEDMAIDS(user_id, status, applied_at DESC);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_AR_USER_STATUS_APPLIED' AND object_id = OBJECT_ID('dbo.APPLIEDROOMMATES'))
   CREATE INDEX IX_AR_USER_STATUS_APPLIED ON dbo.APPLIEDROOMMATES(user_id, status, applied_at DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_AH_USER_STATUS_APPLIED' AND object_id = OBJECT_ID('dbo.APPLIEDHOUSERENTS'))
+  CREATE INDEX IX_AH_USER_STATUS_APPLIED ON dbo.APPLIEDHOUSERENTS(user_id, status, applied_at DESC);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_SUBPAY_USER_STATUS_DATE' AND object_id = OBJECT_ID('dbo.SUBSCRIPTIONPAYMENTS'))
   CREATE INDEX IX_SUBPAY_USER_STATUS_DATE ON dbo.SUBSCRIPTIONPAYMENTS(user_id, status, payment_date DESC);
+
+IF OBJECT_ID('dbo.APPLIEDTUITIONS', 'U') IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UX_APPLIEDTUITIONS_ONE_PENDING_PER_LISTING' AND object_id = OBJECT_ID('dbo.APPLIEDTUITIONS'))
+  AND NOT EXISTS (
+    SELECT tuition_id
+    FROM dbo.APPLIEDTUITIONS
+    WHERE status = 'pending'
+    GROUP BY tuition_id
+    HAVING COUNT(*) > 1
+  )
+  CREATE UNIQUE INDEX UX_APPLIEDTUITIONS_ONE_PENDING_PER_LISTING ON dbo.APPLIEDTUITIONS(tuition_id) WHERE status = 'pending';
+
+IF OBJECT_ID('dbo.APPLIEDMAIDS', 'U') IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UX_APPLIEDMAIDS_ONE_PENDING_PER_LISTING' AND object_id = OBJECT_ID('dbo.APPLIEDMAIDS'))
+  AND NOT EXISTS (
+    SELECT maid_id
+    FROM dbo.APPLIEDMAIDS
+    WHERE status = 'pending'
+    GROUP BY maid_id
+    HAVING COUNT(*) > 1
+  )
+  CREATE UNIQUE INDEX UX_APPLIEDMAIDS_ONE_PENDING_PER_LISTING ON dbo.APPLIEDMAIDS(maid_id) WHERE status = 'pending';
+
+IF OBJECT_ID('dbo.APPLIEDHOUSERENTS', 'U') IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UX_APPLIEDHOUSERENTS_ONE_PENDING_PER_LISTING' AND object_id = OBJECT_ID('dbo.APPLIEDHOUSERENTS'))
+  AND NOT EXISTS (
+    SELECT house_id
+    FROM dbo.APPLIEDHOUSERENTS
+    WHERE status = 'pending'
+    GROUP BY house_id
+    HAVING COUNT(*) > 1
+  )
+  CREATE UNIQUE INDEX UX_APPLIEDHOUSERENTS_ONE_PENDING_PER_LISTING ON dbo.APPLIEDHOUSERENTS(house_id) WHERE status = 'pending';
 
 IF OBJECT_ID('dbo.vw_admin_dashboard_summary', 'V') IS NOT NULL
   DROP VIEW dbo.vw_admin_dashboard_summary;
@@ -430,11 +569,13 @@ SELECT
   + (SELECT COUNT(*) FROM dbo.MARKETPLACELISTINGS) AS total_listings,
   (SELECT COUNT(*) FROM dbo.BOOKEDTUITIONS)
   + (SELECT COUNT(*) FROM dbo.BOOKEDMAIDS)
-  + (SELECT COUNT(*) FROM dbo.BOOKEDROOMMATES) AS total_bookings,
+  + (SELECT COUNT(*) FROM dbo.BOOKEDROOMMATES)
+  + (SELECT COUNT(*) FROM dbo.BOOKEDHOUSERENTS) AS total_bookings,
   (SELECT ISNULL(SUM(amount), 0) FROM dbo.SUBSCRIPTIONPAYMENTS WHERE status = ''paid'') AS total_revenue,
   (SELECT COUNT(*) FROM dbo.APPLIEDTUITIONS WHERE status = ''pending'')
   + (SELECT COUNT(*) FROM dbo.APPLIEDMAIDS WHERE status = ''pending'')
-  + (SELECT COUNT(*) FROM dbo.APPLIEDROOMMATES WHERE status = ''pending'') AS pending_applications
+  + (SELECT COUNT(*) FROM dbo.APPLIEDROOMMATES WHERE status = ''pending'')
+  + (SELECT COUNT(*) FROM dbo.APPLIEDHOUSERENTS WHERE status = ''pending'') AS pending_applications
 ');
 
 IF OBJECT_ID('dbo.vw_student_dashboard', 'V') IS NOT NULL
@@ -447,11 +588,13 @@ SELECT
     (SELECT COUNT(*) FROM dbo.APPLIEDTUITIONS atq WHERE atq.user_id = u.user_id)
     + (SELECT COUNT(*) FROM dbo.APPLIEDMAIDS am WHERE am.user_id = u.user_id)
     + (SELECT COUNT(*) FROM dbo.APPLIEDROOMMATES ar WHERE ar.user_id = u.user_id)
+    + (SELECT COUNT(*) FROM dbo.APPLIEDHOUSERENTS ah WHERE ah.user_id = u.user_id)
   ) AS total_applications,
   (
     (SELECT COUNT(*) FROM dbo.BOOKEDTUITIONS bt INNER JOIN dbo.APPLIEDTUITIONS atq ON atq.application_id = bt.application_id WHERE atq.user_id = u.user_id)
     + (SELECT COUNT(*) FROM dbo.BOOKEDMAIDS bm INNER JOIN dbo.APPLIEDMAIDS am ON am.application_id = bm.application_id WHERE am.user_id = u.user_id)
     + (SELECT COUNT(*) FROM dbo.BOOKEDROOMMATES br INNER JOIN dbo.APPLIEDROOMMATES ar ON ar.application_id = br.application_id WHERE ar.user_id = u.user_id)
+    + (SELECT COUNT(*) FROM dbo.BOOKEDHOUSERENTS bh INNER JOIN dbo.APPLIEDHOUSERENTS ah ON ah.application_id = bh.application_id WHERE ah.user_id = u.user_id)
   ) AS total_bookings,
   (
     (SELECT COUNT(*) FROM dbo.TUITIONS t WHERE t.user_id = u.user_id)
@@ -566,10 +709,12 @@ SELECT
   + (SELECT COUNT(*) FROM dbo.MARKETPLACELISTINGS) AS total_listings,
   (SELECT COUNT(*) FROM dbo.BOOKEDTUITIONS)
   + (SELECT COUNT(*) FROM dbo.BOOKEDMAIDS)
-  + (SELECT COUNT(*) FROM dbo.BOOKEDROOMMATES) AS total_bookings,
+  + (SELECT COUNT(*) FROM dbo.BOOKEDROOMMATES)
+  + (SELECT COUNT(*) FROM dbo.BOOKEDHOUSERENTS) AS total_bookings,
   (SELECT COUNT(*) FROM dbo.APPLIEDTUITIONS WHERE status = ''pending'')
   + (SELECT COUNT(*) FROM dbo.APPLIEDMAIDS WHERE status = ''pending'')
-  + (SELECT COUNT(*) FROM dbo.APPLIEDROOMMATES WHERE status = ''pending'') AS pending_applications,
+  + (SELECT COUNT(*) FROM dbo.APPLIEDROOMMATES WHERE status = ''pending'')
+  + (SELECT COUNT(*) FROM dbo.APPLIEDHOUSERENTS WHERE status = ''pending'') AS pending_applications,
   (SELECT COUNT(*) FROM dbo.TUITIONS WHERE status = ''Pending'')
   + (SELECT COUNT(*) FROM dbo.MAIDS WHERE status = ''Pending'')
   + (SELECT COUNT(*) FROM dbo.ROOMMATELISTINGS WHERE status = ''Pending'')
@@ -592,10 +737,12 @@ SELECT
   u.user_id,
   (SELECT COUNT(*) FROM dbo.APPLIEDTUITIONS atq WHERE atq.user_id = u.user_id)
   + (SELECT COUNT(*) FROM dbo.APPLIEDMAIDS am WHERE am.user_id = u.user_id)
-  + (SELECT COUNT(*) FROM dbo.APPLIEDROOMMATES ar WHERE ar.user_id = u.user_id) AS total_applications,
+  + (SELECT COUNT(*) FROM dbo.APPLIEDROOMMATES ar WHERE ar.user_id = u.user_id)
+  + (SELECT COUNT(*) FROM dbo.APPLIEDHOUSERENTS ah WHERE ah.user_id = u.user_id) AS total_applications,
   (SELECT COUNT(*) FROM dbo.BOOKEDTUITIONS bt INNER JOIN dbo.APPLIEDTUITIONS atq ON atq.application_id = bt.application_id WHERE atq.user_id = u.user_id)
   + (SELECT COUNT(*) FROM dbo.BOOKEDMAIDS bm INNER JOIN dbo.APPLIEDMAIDS am ON am.application_id = bm.application_id WHERE am.user_id = u.user_id)
-  + (SELECT COUNT(*) FROM dbo.BOOKEDROOMMATES br INNER JOIN dbo.APPLIEDROOMMATES ar ON ar.application_id = br.application_id WHERE ar.user_id = u.user_id) AS total_bookings,
+  + (SELECT COUNT(*) FROM dbo.BOOKEDROOMMATES br INNER JOIN dbo.APPLIEDROOMMATES ar ON ar.application_id = br.application_id WHERE ar.user_id = u.user_id)
+  + (SELECT COUNT(*) FROM dbo.BOOKEDHOUSERENTS bh INNER JOIN dbo.APPLIEDHOUSERENTS ah ON ah.application_id = bh.application_id WHERE ah.user_id = u.user_id) AS total_bookings,
   (SELECT COUNT(*) FROM dbo.TUITIONS t WHERE t.user_id = u.user_id)
   + (SELECT COUNT(*) FROM dbo.MAIDS m WHERE m.user_id = u.user_id)
   + (SELECT COUNT(*) FROM dbo.ROOMMATELISTINGS r WHERE r.user_id = u.user_id)
@@ -604,7 +751,8 @@ SELECT
   (SELECT ISNULL(SUM(sp.amount), 0) FROM dbo.SUBSCRIPTIONPAYMENTS sp WHERE sp.user_id = u.user_id AND sp.status = ''paid'') AS total_payments,
   (SELECT COUNT(*) FROM dbo.APPLIEDTUITIONS a WHERE a.user_id = u.user_id AND a.status = ''pending'')
   + (SELECT COUNT(*) FROM dbo.APPLIEDMAIDS a WHERE a.user_id = u.user_id AND a.status = ''pending'')
-  + (SELECT COUNT(*) FROM dbo.APPLIEDROOMMATES a WHERE a.user_id = u.user_id AND a.status = ''pending'') AS pending_applications,
+  + (SELECT COUNT(*) FROM dbo.APPLIEDROOMMATES a WHERE a.user_id = u.user_id AND a.status = ''pending'')
+  + (SELECT COUNT(*) FROM dbo.APPLIEDHOUSERENTS a WHERE a.user_id = u.user_id AND a.status = ''pending'') AS pending_applications,
   (SELECT COUNT(*) FROM dbo.USERACTIVITIES ua WHERE ua.user_id = u.user_id AND ua.[timestamp] >= DATEADD(DAY, -30, GETUTCDATE())) AS activity_count_30d,
   (SELECT MAX(ua.[timestamp]) FROM dbo.USERACTIVITIES ua WHERE ua.user_id = u.user_id) AS last_activity_at,
   (SELECT ISNULL(SUM(sp.amount), 0) FROM dbo.SUBSCRIPTIONPAYMENTS sp WHERE sp.user_id = u.user_id AND sp.status = ''paid'' AND sp.payment_date >= DATEFROMPARTS(YEAR(GETUTCDATE()), MONTH(GETUTCDATE()), 1)) AS current_month_spend
@@ -772,7 +920,8 @@ BEGIN
     SELECT @owner_id = t.user_id
     FROM dbo.TUITIONS t
     WHERE t.tuition_id = @p_tuition_id
-      AND t.status IN (''Approved'', ''approved'', ''open'');
+      AND ISNULL(t.is_listed, 0) = 1
+      AND LOWER(ISNULL(t.status, ''approved'')) = ''approved'';
 
     IF @owner_id IS NULL
       THROW 50031, ''Tuition is not available for application'', 1;
@@ -785,12 +934,16 @@ BEGIN
       FROM dbo.APPLIEDTUITIONS a
       WHERE a.user_id = @p_user_id
         AND a.tuition_id = @p_tuition_id
-        AND a.status IN (''pending'', ''approved'', ''booked'')
+        AND LOWER(ISNULL(a.status, ''pending'')) IN (''pending'', ''approved'')
     )
       THROW 50033, ''Duplicate active tuition application is not allowed'', 1;
 
     INSERT INTO dbo.APPLIEDTUITIONS (tuition_id, user_id, status)
     VALUES (@p_tuition_id, @p_user_id, ''pending'');
+
+      UPDATE dbo.TUITIONS
+      SET is_locked = 1
+      WHERE tuition_id = @p_tuition_id;
 
     SELECT TOP 1 @application_id = application_id
     FROM dbo.APPLIEDTUITIONS
@@ -853,7 +1006,7 @@ BEGIN
     WHERE application_id = @p_application_id;
 
     UPDATE dbo.MAIDS
-    SET status = ''Booked''
+    SET status = ''Booked'', is_locked = 1
     WHERE maid_id = @maid_id;
 
     INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id, activity_description)
@@ -912,7 +1065,7 @@ BEGIN
     WHERE application_id = @p_application_id;
 
     UPDATE dbo.ROOMMATELISTINGS
-    SET status = ''Booked''
+    SET status = ''Booked'', is_locked = 1
     WHERE listing_id = @listing_id;
 
     INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id, activity_description)
@@ -1203,6 +1356,56 @@ export async function ensureSchema() {
     await runEnhancementPhase(objectEnhancementSql, 'objects');
   } else {
     await runEnhancementPhase(enhancementSql, 'full');
+  }
+
+  // Resilient patch-up migration: ensure normalized listing workflow objects exist even if optional enhancement parts were skipped.
+  try {
+    await pool.request().query(`
+      IF COL_LENGTH('dbo.TUITIONS', 'is_listed') IS NULL
+        ALTER TABLE dbo.TUITIONS ADD is_listed BIT NOT NULL DEFAULT (0);
+
+      IF COL_LENGTH('dbo.MAIDS', 'is_listed') IS NULL
+        ALTER TABLE dbo.MAIDS ADD is_listed BIT NOT NULL DEFAULT (0);
+
+      IF COL_LENGTH('dbo.HOUSERENTLISTINGS', 'is_listed') IS NULL
+        ALTER TABLE dbo.HOUSERENTLISTINGS ADD is_listed BIT NOT NULL DEFAULT (0);
+
+      IF OBJECT_ID('dbo.APPLIEDHOUSERENTS', 'U') IS NULL
+      BEGIN
+        CREATE TABLE dbo.APPLIEDHOUSERENTS (
+          application_id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT NEWID(),
+          house_id UNIQUEIDENTIFIER NOT NULL,
+          user_id UNIQUEIDENTIFIER NOT NULL,
+          status NVARCHAR(30) NOT NULL DEFAULT 'pending',
+          applied_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+        );
+      END;
+
+      IF OBJECT_ID('dbo.BOOKEDHOUSERENTS', 'U') IS NULL
+      BEGIN
+        CREATE TABLE dbo.BOOKEDHOUSERENTS (
+          booking_id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT NEWID(),
+          application_id UNIQUEIDENTIFIER NOT NULL UNIQUE,
+          booking_status NVARCHAR(20) NOT NULL DEFAULT 'confirmed',
+          confirmed_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+        );
+      END;
+
+      IF OBJECT_ID('dbo.HOUSECONTACTS', 'U') IS NOT NULL
+      BEGIN
+        INSERT INTO dbo.APPLIEDHOUSERENTS (application_id, house_id, user_id, status, applied_at)
+        SELECT hc.contact_id, hc.house_id, hc.user_id,
+               CASE WHEN LOWER(ISNULL(hc.status, 'pending')) IN ('pending', 'approved', 'rejected') THEN LOWER(ISNULL(hc.status, 'pending')) ELSE 'pending' END,
+               ISNULL(hc.created_at, SYSUTCDATETIME())
+        FROM dbo.HOUSECONTACTS hc
+        WHERE NOT EXISTS (SELECT 1 FROM dbo.APPLIEDHOUSERENTS a WHERE a.application_id = hc.contact_id);
+      END;
+    `);
+  } catch (err) {
+    if (strictSchemaEnhancement) {
+      throw err;
+    }
+    console.warn(`Schema enhancement fallback migration skipped due to: ${err?.message || String(err)}`);
   }
 
   schemaReady = true;

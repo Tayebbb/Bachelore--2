@@ -99,19 +99,46 @@ export default function StudentHouseRentPage() {
                   <td>{r.rooms}</td>
                   <td>{r.status}</td>
                   <td>
-                    {!isSubscribed ? (
-                      <button type="button" className="panel-btn-sm" style={{ background: '#ccc', color: '#888', cursor: 'not-allowed', opacity: 0.7 }} disabled>
-                        Locked
-                      </button>
-                    ) : r.userApplicationStatus && (String(r.userApplicationStatus).toLowerCase() === 'pending' || String(r.userApplicationStatus).toLowerCase() === 'applied') ? (
-                      <button type="button" className="panel-btn-sm" style={{ background: '#ccc', color: '#888', cursor: 'not-allowed', opacity: 0.7 }} disabled>
-                        Applied
-                      </button>
-                    ) : (
-                      <button type="button" className="panel-btn-sm primary" onClick={() => contact(r.house_id)}>
-                        Apply / Book
-                      </button>
-                    )}
+                    {(() => {
+                      const applicationStatus = String(r.userApplicationStatus || '').toLowerCase();
+                      if (!isSubscribed) {
+                        return (
+                          <button type="button" className="panel-btn-sm" style={{ background: '#ccc', color: '#888', cursor: 'not-allowed', opacity: 0.7 }} disabled>
+                            Locked
+                          </button>
+                        );
+                      }
+
+                      if (applicationStatus === 'pending') {
+                        return (
+                          <button type="button" className="panel-btn-sm" style={{ background: '#ccc', color: '#888', cursor: 'not-allowed', opacity: 0.7 }} disabled>
+                            Pending Approval
+                          </button>
+                        );
+                      }
+
+                      if (applicationStatus === 'approved' || applicationStatus === 'booked') {
+                        return (
+                          <button type="button" className="panel-btn-sm" style={{ background: '#cfe8ff', color: '#174ea6', cursor: 'not-allowed', opacity: 0.9 }} disabled>
+                            Booked
+                          </button>
+                        );
+                      }
+
+                      if (applicationStatus === 'rejected') {
+                        return (
+                          <button type="button" className="panel-btn-sm primary" onClick={() => contact(r.house_id)}>
+                            Reapply
+                          </button>
+                        );
+                      }
+
+                      return (
+                        <button type="button" className="panel-btn-sm primary" onClick={() => contact(r.house_id)}>
+                          Apply / Book
+                        </button>
+                      );
+                    })()}
                   </td>
                 </tr>
               ))}

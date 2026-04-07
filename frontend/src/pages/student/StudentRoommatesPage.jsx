@@ -57,8 +57,8 @@ export default function StudentRoommatesPage() {
       await api.post(`/api/student/roommates/${listingId}/apply`);
       setPopup({ show: true, message: 'Request submitted for approval!' });
       load();
-    } catch {
-      setPopup({ show: true, message: 'Failed to submit request.' });
+    } catch (err) {
+      setPopup({ show: true, message: err.response?.data?.msg || 'Failed to submit request.' });
     }
   };
 
@@ -137,19 +137,66 @@ export default function StudentRoommatesPage() {
                       <td>{r.type}</td>
                       <td>{r.status}</td>
                       <td>
-                        {!isSubscribed ? (
-                          <button type="button" className="panel-btn-sm" style={{ background: '#ccc', color: '#888', cursor: 'not-allowed', opacity: 0.7 }} disabled>
-                            Locked
-                          </button>
-                        ) : r.userApplicationStatus && (String(r.userApplicationStatus).toLowerCase() === 'pending' || String(r.userApplicationStatus).toLowerCase() === 'applied') ? (
-                          <button type="button" className="panel-btn-sm" style={{ background: '#ccc', color: '#888', cursor: 'not-allowed', opacity: 0.7 }} disabled>
-                            Applied
-                          </button>
-                        ) : (
-                          <button type="button" className="panel-btn-sm primary" onClick={() => apply(r.listing_id)}>
-                            Apply / Book
-                          </button>
-                        )}
+                        {(() => {
+                          const applicationStatus = String(r.userApplicationStatus || '').toLowerCase();
+                          const isListingLocked = Number(r.is_locked || 0) === 1;
+                          const isOwnListing = Boolean(r.is_own);
+                          if (!isSubscribed) {
+                            return (
+                              <button type="button" className="panel-btn-sm" style={{ background: '#ccc', color: '#888', cursor: 'not-allowed', opacity: 0.7 }} disabled>
+                                Locked
+                              </button>
+                            );
+                          }
+
+                          if (isOwnListing) {
+                            return (
+                              <button type="button" className="panel-btn-sm" style={{ background: '#e9ecef', color: '#495057', cursor: 'not-allowed', opacity: 0.95 }} disabled>
+                                <i className="bi bi-person-fill" style={{ marginRight: 6 }} />
+                                My Listing
+                              </button>
+                            );
+                          }
+
+                          if (applicationStatus === 'pending') {
+                            return (
+                              <button type="button" className="panel-btn-sm" style={{ background: '#ccc', color: '#888', cursor: 'not-allowed', opacity: 0.7 }} disabled>
+                                Pending Approval
+                              </button>
+                            );
+                          }
+
+                          if (applicationStatus === 'approved' || applicationStatus === 'booked') {
+                            return (
+                              <button type="button" className="panel-btn-sm" style={{ background: '#cfe8ff', color: '#174ea6', cursor: 'not-allowed', opacity: 0.9 }} disabled>
+                                Booked
+                              </button>
+                            );
+                          }
+
+                          if (applicationStatus === 'rejected') {
+                            return (
+                              <button type="button" className="panel-btn-sm primary" onClick={() => apply(r.listing_id)}>
+                                Reapply
+                              </button>
+                            );
+                          }
+
+                          if (isListingLocked) {
+                            return (
+                              <button type="button" className="panel-btn-sm" style={{ background: '#ccc', color: '#666', cursor: 'not-allowed', opacity: 0.85 }} disabled>
+                                <i className="bi bi-lock-fill" style={{ marginRight: 6 }} />
+                                Locked
+                              </button>
+                            );
+                          }
+
+                          return (
+                            <button type="button" className="panel-btn-sm primary" onClick={() => apply(r.listing_id)}>
+                              Apply / Book
+                            </button>
+                          );
+                        })()}
                       </td>
                     </tr>
                   ))}

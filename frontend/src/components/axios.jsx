@@ -1,6 +1,17 @@
 import axios from "axios";
 import { getToken } from '../lib/auth'
 
+function clearAuthStorage() {
+  try {
+    localStorage.removeItem('bachelore_auth');
+    localStorage.removeItem('bachelore_user');
+    localStorage.removeItem('bachelore_token');
+    localStorage.removeItem('bachelore_admin_auth');
+  } catch (e) {
+    // noop
+  }
+}
+
 const BASE =
   import.meta.env.VITE_API_BASE_URL ||
   import.meta.env.VITE_API_URL ||
@@ -49,6 +60,18 @@ instance.interceptors.response.use(
         err.response?.status,
         err.response?.data
       );
+
+      const isAuthError = err.response?.status === 401;
+      const authMsg = String(err.response?.data?.msg || '').toLowerCase();
+      if (isAuthError && authMsg.includes('authentication required')) {
+        clearAuthStorage();
+        const currentPath = window.location.pathname || '/';
+        if (currentPath.startsWith('/admin')) {
+          window.location.href = '/admin/login';
+        } else {
+          window.location.href = '/login';
+        }
+      }
     } catch (e) {}
     return Promise.reject(err);
   }

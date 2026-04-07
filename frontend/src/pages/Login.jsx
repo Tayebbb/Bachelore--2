@@ -28,7 +28,7 @@ export default function Login() {
       if (data && data.user) {
         setStatus('success')
         console.log('Logged in user:', data.user)
-        try { authLogin(data.user) } catch(e){}
+        try { authLogin(data.user, data.token) } catch(e){}
         const params = new URLSearchParams(location.search);
         const next = params.get('next');
         navigate(next || '/home');

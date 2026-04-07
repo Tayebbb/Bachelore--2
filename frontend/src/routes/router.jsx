@@ -11,14 +11,17 @@ import AdminLayout from '../components/admin/AdminLayout.jsx'
 import StudentLayout from '../components/student/StudentLayout.jsx'
 import AdminDashboardPage from '../pages/admin/AdminDashboardPage.jsx'
 import AdminUsersPage from '../pages/admin/AdminUsersPage.jsx'
+import AdminCreateListingsPage from '../pages/admin/AdminCreateListingsPage.jsx'
 import AdminListingsPage from '../pages/admin/AdminListingsPage.jsx'
 import AdminPaymentsPage from '../pages/admin/AdminPaymentsPage.jsx'
+import AdminAnnouncementPage from '../pages/admin/AdminAnnouncementPage.jsx'
 import StudentDashboardPage from '../pages/student/StudentDashboardPage.jsx'
 import StudentTuitionPage from '../pages/student/StudentTuitionPage.jsx'
 import StudentMaidsPage from '../pages/student/StudentMaidsPage.jsx'
 import StudentRoommatesPage from '../pages/student/StudentRoommatesPage.jsx'
 import StudentHouseRentPage from '../pages/student/StudentHouseRentPage.jsx'
 import StudentMarketplacePage from '../pages/student/StudentMarketplacePage.jsx'
+import StudentAnnouncementsPage from '../pages/student/StudentAnnouncementsPage.jsx'
 import StudentActivitiesPage from '../pages/student/StudentActivitiesPage.jsx'
 import StudentProfilePage from '../pages/student/StudentProfilePage.jsx'
 
@@ -36,11 +39,14 @@ export default function Router(){
     '/student/roommates',
     '/student/houserent',
     '/student/marketplace',
+    '/student/announcements',
     '/student/activities',
     '/student/profile',
     '/admin/dashboard',
     '/admin/users',
+    '/admin/create-listings',
     '/admin/listings',
+    '/admin/announcements',
     '/admin/payments',
   ])
 
@@ -90,6 +96,7 @@ export default function Router(){
             <Route path="roommates" element={<StudentRoommatesPage />} />
             <Route path="houserent" element={<StudentHouseRentPage />} />
             <Route path="marketplace" element={<StudentMarketplacePage />} />
+            <Route path="announcements" element={<StudentAnnouncementsPage />} />
             <Route path="activities" element={<StudentActivitiesPage />} />
             <Route path="profile" element={<StudentProfilePage />} />
             <Route index element={<Navigate to="/student/dashboard" replace />} />
@@ -107,7 +114,9 @@ export default function Router(){
           >
             <Route path="dashboard" element={<AdminDashboardPage />} />
             <Route path="users" element={<AdminUsersPage />} />
+            <Route path="create-listings" element={<AdminCreateListingsPage />} />
             <Route path="listings" element={<AdminListingsPage />} />
+            <Route path="announcements" element={<AdminAnnouncementPage />} />
             <Route path="payments" element={<AdminPaymentsPage />} />
             <Route index element={<Navigate to="/admin/dashboard" replace />} />
           </Route>
