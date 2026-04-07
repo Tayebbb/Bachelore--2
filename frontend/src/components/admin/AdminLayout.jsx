@@ -7,6 +7,7 @@ const adminMenu = [
   { to: '/admin/users', label: 'Users', icon: 'bi-people' },
   { to: '/admin/create-listings', label: 'Create Listings', icon: 'bi-plus-square' },
   { to: '/admin/listings', label: 'Listing Review', icon: 'bi-patch-check' },
+  { to: '/admin/announcements', label: 'Announcements', icon: 'bi-megaphone' },
   { to: '/admin/payments', label: 'Payments', icon: 'bi-credit-card-2-front' },
 ];
 

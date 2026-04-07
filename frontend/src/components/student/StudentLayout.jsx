@@ -9,6 +9,7 @@ const studentMenu = [
   { to: '/student/roommates', label: 'Roommates', icon: 'bi-people' },
   { to: '/student/houserent', label: 'House Rent', icon: 'bi-building' },
   { to: '/student/marketplace', label: 'Marketplace', icon: 'bi-bag' },
+  { to: '/student/announcements', label: 'Announcements', icon: 'bi-megaphone' },
   { to: '/student/activities', label: 'My Activity', icon: 'bi-clock-history' },
   { to: '/student/profile', label: 'Profile', icon: 'bi-person-circle' },
 ];

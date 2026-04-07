@@ -296,6 +296,21 @@ router.get('/dashboard', async (req, res) => {
   }
 });
 
+router.get('/announcements', async (_req, res) => {
+  try {
+    const pool = await getPool();
+    const result = await pool.request().query(`
+      SELECT a.announcement_id, a.title, a.message, a.created_at, a.created_by, u.name AS created_by_name
+      FROM dbo.ANNOUNCEMENTS a
+      LEFT JOIN dbo.USERS u ON u.user_id = a.created_by
+      ORDER BY a.created_at DESC;
+    `);
+    return res.json(result.recordset || []);
+  } catch (error) {
+    return res.status(500).json({ msg: 'Failed to load announcements', error: String(error.message || error) });
+  }
+});
+
 router.get('/profile', async (req, res) => {
   try {
     const userId = getAuthUserId(req);

@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Syne:wght@400;500;600;700;800&display=swap');
+
 /* ============================================================================
    POPUP MESSAGE
    ============================================================================ */
@@ -50,8 +52,6 @@
     gap: 24px;
   }
 }
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Syne:wght@400;500;600;700;800&display=swap');
-
 /* ============================================================================
    DESIGN TOKENS - Todesktop-inspired Premium Aesthetic
    Light & Dark Mode First-Class Citizens
