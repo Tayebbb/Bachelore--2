@@ -1,5 +1,30 @@
 # BacheLORE Database Viva Guide
 
+---
+
+## 2026 Upgrade & Backend Fixes Summary
+
+### Backend Fixes (2026-04-06)
+- **DB connection**: Now supports both port and instanceName, with fallback and retry logic. See [BACKEND_CHANGES_SUMMARY_2026-04-06.md](BACKEND_CHANGES_SUMMARY_2026-04-06.md).
+- **Dependencies**: `mssql` and `uuid` are required and installed.
+- **Provisioning**: Ensures DB, login, user mapping, and `db_owner` role for `bachelore_user`.
+
+### Integrity Hardening (2026-04-06)
+- **Role/domain enforcement**: `USERS.role` is strictly checked (`STUDENT`/`ADMIN`).
+- **Booking status**: All `BOOKED...` tables have `booking_status` with domain constraint.
+- **Cascade FKs**: All major FKs use `ON UPDATE CASCADE ON DELETE CASCADE`.
+- **Domain/numeric checks**: All status, amount, salary, rent, price, and rooms have domain and positivity checks.
+  See [DB_INTEGRITY_HARDENING_SUMMARY_2026-04-06.md](DB_INTEGRITY_HARDENING_SUMMARY_2026-04-06.md).
+
+### Advanced DB Features (2026-04-06)
+- **Stored procedures**: All booking, application, payment, and admin review flows use robust procs with transactions, validation, and logging.
+- **Triggers**: Insert, update, and delete triggers log all critical actions to `USERACTIVITIES`.
+- **Views**: `vw_admin_dashboard_summary`, `vw_student_dashboard`, and others provide analytics and dashboard data.
+- **Indexes**: Performance and uniqueness indexes on all major tables and status columns.
+- **Schema upgrades**: All new/altered columns, constraints, and tables are reflected in [backend/db/schema.js](backend/db/schema.js) and [BACHELORE_SQL_MASTERY.sql](BACHELORE_SQL_MASTERY.sql).
+
+---
+
 ## 0) Scope and What Was Analyzed
 
 This guide is based on your **actual current codebase** and focuses on database-facing implementation.
@@ -516,6 +541,13 @@ DELETE FROM dbo.ANNOUNCEMENTS OUTPUT DELETED.announcement_id WHERE announcement_
 
 ## 4) Advanced SQL Usage (Important for marks)
 
+### 2026 Upgrades
+- All advanced SQL features (procedures, triggers, views, constraints, indexes) are implemented and demoed in [BACHELORE_SQL_MASTERY.sql](BACHELORE_SQL_MASTERY.sql) and [backend/db/schema.js](backend/db/schema.js).
+- All booking, application, payment, and admin review flows use stored procedures with full transaction safety and audit logging.
+- All listing, application, and booking status changes are logged by triggers.
+- All dashboard and analytics queries use views for performance and maintainability.
+- All domain and numeric constraints are enforced at the DB layer.
+
 ## 4.1 JOINs
 Used across routes and scripts:
 - `INNER JOIN`:
@@ -604,6 +636,10 @@ Why important for viva:
 
 ## 5) Triggers and Automation
 
+### 2026 Upgrades
+- All major insert, update, and delete actions on listings, applications, bookings, and payments are logged by triggers to `USERACTIVITIES`.
+- Triggers include: `trg_tuitions_activity_ins`, `trg_marketplace_activity_ins`, `trg_tuitions_status_update`, `trg_maids_status_update`, `trg_roommates_status_update`, `trg_marketplace_status_update`, `trg_applied_tuition_status_update`, `trg_applied_maid_status_update`, `trg_applied_roommate_status_update`, `trg_users_subscription_status_update`, `trg_tuitions_delete_audit`, `trg_marketplace_delete_audit`.
+
 Main trigger definitions are in `backend/db/schema.js` and `BACHELORE_SQL_MASTERY.sql`.
 
 Examples:
@@ -630,6 +666,11 @@ Why useful:
 ---
 
 ## 6) Database Design Theory (Based on Actual Schema)
+
+### 2026 Upgrades
+- All tables use strong domain, referential, and numeric constraints.
+- All FKs use `ON UPDATE CASCADE ON DELETE CASCADE`.
+- All booking tables have explicit status columns.
 
 ## 6.1 Normalization (3NF perspective)
 - Entity tables are separated by domain:
@@ -762,6 +803,12 @@ UPDATE dbo.USERS SET subscription_active = 1 WHERE user_id = @user_id;
 
 ## 10) Bonus: SQL Query Catalog (Grouped)
 
+### 2026 Upgrades
+- All booking, application, payment, and admin review flows use stored procedures with transaction and logging.
+- All major actions are logged by triggers.
+- All dashboard and analytics queries use views.
+- All domain/numeric constraints and performance indexes are enforced.
+
 ## 10.1 SELECT
 - Auth user lookup by email (`api.js`)
 - Profile fetch (`student.js`)
@@ -815,6 +862,12 @@ UPDATE dbo.USERS SET subscription_active = 1 WHERE user_id = @user_id;
 ---
 
 ## 11) Final Viva Summary (What to say confidently)
+
+### 2026 Upgrades
+- The system now demonstrates advanced DB engineering: robust stored procedures, triggers, views, domain/numeric constraints, and performance indexes.
+- All booking, application, payment, and admin review flows are fully transactional and logged.
+- All analytics and dashboard data are view-driven.
+- All schema changes, constraints, and automation are documented in [backend/db/schema.js](backend/db/schema.js) and [BACHELORE_SQL_MASTERY.sql](BACHELORE_SQL_MASTERY.sql).
 
 1. The frontend sends HTTP requests from React pages to Express routes.
 2. Backend routes execute parameterized MSSQL queries (or stored procedures).
