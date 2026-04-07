@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import api from './axios.jsx';
 import PopupMessage from './PopupMessage.jsx';
+import { getUser } from '../lib/auth';
 
 export default function SubscriptionModal({ show, onClose, onSuccess }) {
   const [bkashNumber, setBkashNumber] = useState('');
   const [reference, setReference] = useState('');
   const [loading, setLoading] = useState(false);
   const [popup, setPopup] = useState({ show: false, message: '', type: 'success' });
+  const isValidBkashNumber = (value) => /^01\d{9}$/.test(String(value || '').trim());
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -15,9 +17,20 @@ export default function SubscriptionModal({ show, onClose, onSuccess }) {
       return;
     }
 
+    if (!isValidBkashNumber(bkashNumber)) {
+      setPopup({ show: true, message: 'BKash number must be 11 digits and start with 01.', type: 'error' });
+      return;
+    }
+
     setLoading(true);
     try {
+      const currentUser = getUser();
+      const userId = currentUser?.id || currentUser?._id || currentUser?.user_id;
       await api.post('/api/student/subscription/pay', {
+        userId,
+        name: currentUser?.name || currentUser?.fullName || '',
+        email: currentUser?.email || '',
+        role: currentUser?.role || 'student',
         bkashNumber,
         reference,
         amount: 99,
@@ -100,6 +113,9 @@ export default function SubscriptionModal({ show, onClose, onSuccess }) {
               value={bkashNumber}
               onChange={(e) => setBkashNumber(e.target.value)}
               placeholder="Enter your BKash number"
+              inputMode="numeric"
+              maxLength={11}
+              pattern="01[0-9]{9}"
               disabled={loading}
               style={{
                 width: '100%',
@@ -135,6 +151,9 @@ export default function SubscriptionModal({ show, onClose, onSuccess }) {
                 opacity: loading ? 0.6 : 1
               }}
             />
+            <div style={{ marginTop: '6px', fontSize: '0.85em', color: '#666' }}>
+              Must be 11 digits and start with 01.
+            </div>
           </div>
 
           <div style={{

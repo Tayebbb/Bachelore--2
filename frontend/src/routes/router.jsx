@@ -11,6 +11,7 @@ import AdminLayout from '../components/admin/AdminLayout.jsx'
 import StudentLayout from '../components/student/StudentLayout.jsx'
 import AdminDashboardPage from '../pages/admin/AdminDashboardPage.jsx'
 import AdminUsersPage from '../pages/admin/AdminUsersPage.jsx'
+import AdminCreateListingsPage from '../pages/admin/AdminCreateListingsPage.jsx'
 import AdminListingsPage from '../pages/admin/AdminListingsPage.jsx'
 import AdminPaymentsPage from '../pages/admin/AdminPaymentsPage.jsx'
 import StudentDashboardPage from '../pages/student/StudentDashboardPage.jsx'
@@ -40,6 +41,7 @@ export default function Router(){
     '/student/profile',
     '/admin/dashboard',
     '/admin/users',
+    '/admin/create-listings',
     '/admin/listings',
     '/admin/payments',
   ])
@@ -107,6 +109,7 @@ export default function Router(){
           >
             <Route path="dashboard" element={<AdminDashboardPage />} />
             <Route path="users" element={<AdminUsersPage />} />
+            <Route path="create-listings" element={<AdminCreateListingsPage />} />
             <Route path="listings" element={<AdminListingsPage />} />
             <Route path="payments" element={<AdminPaymentsPage />} />
             <Route index element={<Navigate to="/admin/dashboard" replace />} />

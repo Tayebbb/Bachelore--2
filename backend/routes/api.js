@@ -141,7 +141,7 @@ async function resolveActorId(pool, preferredId) {
   }
   const fallback = await pool
     .request()
-    .query("SELECT TOP 1 user_id FROM dbo.USERS WHERE role = 'admin' ORDER BY created_at ASC");
+    .query("SELECT TOP 1 user_id FROM dbo.USERS ORDER BY CASE WHEN role = 'admin' THEN 0 ELSE 1 END, created_at ASC");
   return fallback.recordset[0]?.user_id || null;
 }
 
@@ -203,7 +203,10 @@ router.post('/signup', async (req, res) => {
 
       const user = normalizeUser(result.recordset[0]);
       await logActivity(pool, user.user_id, 'signup', 'USERS', user.user_id);
-      return res.status(201).json({ msg: 'Signup successful', user });
+      const token = jwt.sign({ user_id: user.user_id, role: user.role || 'student' }, JWT_SECRET, {
+        expiresIn: '7d',
+      });
+      return res.status(201).json({ msg: 'Signup successful', user, token });
     } catch (dbErr) {
       if (!isDbUnavailable(dbErr)) {
         throw dbErr;
@@ -236,9 +239,14 @@ router.post('/signup', async (req, res) => {
       localUsers.push(localUser);
       await writeLocalUsers(localUsers);
 
+      const token = jwt.sign({ user_id: localUser.user_id, role: localUser.role || 'student' }, JWT_SECRET, {
+        expiresIn: '7d',
+      });
+
       return res.status(201).json({
         msg: 'Signup successful (offline mode)',
         user: normalizeUser(localUser),
+        token,
       });
     }
   } catch (error) {
@@ -396,18 +404,23 @@ router.post('/tuitions', async (req, res) => {
 
     const pool = await getPool();
     const resolvedOwnerId = await resolveActorId(pool, ownerId);
+    const tuitionId = randomUUID();
     const result = await pool
       .request()
+      .input('tuition_id', sql.UniqueIdentifier, tuitionId)
       .input('user_id', sql.UniqueIdentifier, resolvedOwnerId)
       .input('subject', sql.NVarChar(140), finalSubject)
       .input('salary', sql.Decimal(10, 2), Number(salary))
       .input('location', sql.NVarChar(160), location)
-      .input('status', sql.NVarChar(30), status || 'open')
+      .input('status', sql.NVarChar(30), status || 'pending')
       .query(`
-        INSERT INTO dbo.TUITIONS (user_id, subject, salary, location, status)
-        OUTPUT INSERTED.tuition_id AS _id, INSERTED.tuition_id, INSERTED.user_id, INSERTED.subject,
-               INSERTED.subject AS title, INSERTED.salary, INSERTED.location, INSERTED.status, INSERTED.created_at
-        VALUES (@user_id, @subject, @salary, @location, @status)
+        INSERT INTO dbo.TUITIONS (tuition_id, user_id, subject, salary, location, status, is_listed)
+        VALUES (@tuition_id, @user_id, @subject, @salary, @location, @status, 0);
+
+        SELECT t.tuition_id AS _id, t.tuition_id, t.user_id, t.subject,
+               t.subject AS title, t.salary, t.location, t.status, t.created_at
+        FROM dbo.TUITIONS t
+        WHERE t.tuition_id = @tuition_id;
       `);
 
     await logActivity(pool, resolvedOwnerId, 'create_tuition', 'TUITIONS', result.recordset[0].tuition_id);
@@ -573,24 +586,31 @@ router.post('/maids', async (req, res) => {
     const salary = req.body.salary ?? req.body.hourlyRate;
     const location = req.body.location || 'Unknown';
     const availability = req.body.availability || req.body.name || 'available';
+    const status = req.body.status || 'pending';
     if (salary === undefined) {
       return res.status(400).json({ msg: 'salary/hourlyRate is required' });
     }
 
     const pool = await getPool();
     const resolvedOwnerId = await resolveActorId(pool, ownerId);
+    const maidId = randomUUID();
     const result = await pool
       .request()
+      .input('maid_id', sql.UniqueIdentifier, maidId)
       .input('user_id', sql.UniqueIdentifier, resolvedOwnerId)
       .input('salary', sql.Decimal(10, 2), Number(salary))
       .input('location', sql.NVarChar(160), location)
       .input('availability', sql.NVarChar(40), availability)
+      .input('status', sql.NVarChar(30), status)
       .query(`
-        INSERT INTO dbo.MAIDS (user_id, salary, location, availability)
-        OUTPUT INSERTED.maid_id AS _id, INSERTED.maid_id, INSERTED.user_id,
-               INSERTED.salary, INSERTED.salary AS hourlyRate,
-               INSERTED.location, INSERTED.availability, INSERTED.availability AS name, INSERTED.created_at
-        VALUES (@user_id, @salary, @location, @availability)
+        INSERT INTO dbo.MAIDS (maid_id, user_id, salary, location, availability, status, is_listed)
+        VALUES (@maid_id, @user_id, @salary, @location, @availability, @status, 0);
+
+        SELECT m.maid_id AS _id, m.maid_id, m.user_id,
+               m.salary, m.salary AS hourlyRate,
+               m.location, m.availability, m.availability AS name, m.status, m.created_at
+        FROM dbo.MAIDS m
+        WHERE m.maid_id = @maid_id;
       `);
 
     await logActivity(pool, resolvedOwnerId, 'create_maid', 'MAIDS', result.recordset[0].maid_id);
@@ -1032,6 +1052,7 @@ router.get('/house-rent', async (_req, res) => {
   const pool = await getPool();
   const result = await pool.request().query(`
     SELECT house_id AS _id, house_id, user_id, location, rent AS price, rent, rooms,
+           status,
            description, created_at
     FROM dbo.HOUSERENTLISTINGS
     ORDER BY created_at DESC
@@ -1049,19 +1070,26 @@ router.post('/house-rent/create', async (req, res) => {
     }
     const rent = Number(req.body.rent ?? req.body.price ?? 0);
     const rooms = Number(req.body.rooms ?? 1);
+    const status = req.body.status || 'pending';
+    const houseId = randomUUID();
 
     const result = await pool
       .request()
+      .input('house_id', sql.UniqueIdentifier, houseId)
       .input('user_id', sql.UniqueIdentifier, resolvedOwnerId)
       .input('location', sql.NVarChar(160), req.body.location || 'Unknown')
       .input('rent', sql.Decimal(10, 2), rent)
       .input('rooms', sql.Int, rooms)
       .input('description', sql.NVarChar(sql.MAX), req.body.description || req.body.title || '')
+      .input('status', sql.NVarChar(30), status)
       .query(`
-        INSERT INTO dbo.HOUSERENTLISTINGS (user_id, location, rent, rooms, description)
-        OUTPUT INSERTED.house_id AS _id, INSERTED.house_id, INSERTED.user_id, INSERTED.location,
-               INSERTED.rent AS price, INSERTED.rent, INSERTED.rooms, INSERTED.description, INSERTED.created_at
-        VALUES (@user_id, @location, @rent, @rooms, @description)
+        INSERT INTO dbo.HOUSERENTLISTINGS (house_id, user_id, location, rent, rooms, description, status, is_listed)
+        VALUES (@house_id, @user_id, @location, @rent, @rooms, @description, @status, 0);
+
+        SELECT h.house_id AS _id, h.house_id, h.user_id, h.location,
+               h.rent AS price, h.rent, h.rooms, h.description, h.status, h.created_at
+        FROM dbo.HOUSERENTLISTINGS h
+        WHERE h.house_id = @house_id;
       `);
 
     await logActivity(pool, resolvedOwnerId, 'create_house_listing', 'HOUSERENTLISTINGS', result.recordset[0].house_id);
@@ -1091,9 +1119,8 @@ router.post('/house-rent/contact', async (req, res) => {
   try {
     const houseId = req.body.houseId || req.body.house_id || req.body.listingId || req.body.receiverId;
     const userId = extractUserId(req) || req.body.senderId;
-    const message = req.body.message;
-    if (!houseId || !userId || !message) {
-      return res.status(400).json({ msg: 'houseId, userId and message are required' });
+    if (!houseId || !userId) {
+      return res.status(400).json({ msg: 'houseId and userId are required' });
     }
 
     const pool = await getPool();
@@ -1101,14 +1128,13 @@ router.post('/house-rent/contact', async (req, res) => {
       .request()
       .input('house_id', sql.UniqueIdentifier, houseId)
       .input('user_id', sql.UniqueIdentifier, userId)
-      .input('message', sql.NVarChar(sql.MAX), message)
       .query(`
-        INSERT INTO dbo.HOUSECONTACTS (house_id, user_id, message)
-        OUTPUT INSERTED.contact_id AS _id, INSERTED.contact_id, INSERTED.house_id, INSERTED.user_id, INSERTED.message, INSERTED.created_at
-        VALUES (@house_id, @user_id, @message)
+        INSERT INTO dbo.APPLIEDHOUSERENTS (house_id, user_id, status)
+        OUTPUT INSERTED.application_id AS _id, INSERTED.application_id, INSERTED.house_id, INSERTED.user_id, INSERTED.status, INSERTED.applied_at
+        VALUES (@house_id, @user_id, 'pending')
       `);
 
-    await logActivity(pool, userId, 'contact_house', 'HOUSECONTACTS', result.recordset[0].contact_id);
+    await logActivity(pool, userId, 'apply_house_rent', 'APPLIEDHOUSERENTS', result.recordset[0].application_id);
     res.status(201).json(result.recordset[0]);
   } catch (error) {
     res.status(500).json({ msg: 'Failed to create house contact', error: String(error.message || error) });
@@ -1121,12 +1147,12 @@ router.get('/house-rent/contacts/:userId', async (req, res) => {
     .request()
     .input('user_id', sql.UniqueIdentifier, req.params.userId)
     .query(`
-      SELECT c.contact_id AS _id, c.contact_id, c.house_id, c.user_id, c.message, c.created_at,
+      SELECT c.application_id AS _id, c.application_id, c.house_id, c.user_id, c.status, c.applied_at,
              h.location, h.rent, h.rooms
-      FROM dbo.HOUSECONTACTS c
+      FROM dbo.APPLIEDHOUSERENTS c
       JOIN dbo.HOUSERENTLISTINGS h ON h.house_id = c.house_id
       WHERE c.user_id = @user_id
-      ORDER BY c.created_at DESC
+      ORDER BY c.applied_at DESC
     `);
   res.json(result.recordset);
 });
@@ -1217,10 +1243,19 @@ router.post('/subscription', async (req, res) => {
       .input('amount', sql.Decimal(10, 2), Number(amount))
       .input('status', sql.NVarChar(30), status)
       .query(`
+        DECLARE @inserted TABLE (
+          payment_id UNIQUEIDENTIFIER,
+          user_id UNIQUEIDENTIFIER,
+          amount DECIMAL(10, 2),
+          status NVARCHAR(30),
+          payment_date DATETIME2
+        );
+
         INSERT INTO dbo.SUBSCRIPTIONPAYMENTS (user_id, amount, status)
-        OUTPUT INSERTED.payment_id AS _id, INSERTED.payment_id, INSERTED.user_id, INSERTED.amount,
-               INSERTED.status, INSERTED.payment_date
+        OUTPUT INSERTED.payment_id, INSERTED.user_id, INSERTED.amount, INSERTED.status, INSERTED.payment_date INTO @inserted
         VALUES (@user_id, @amount, @status)
+
+        SELECT payment_id AS _id, payment_id, user_id, amount, status, payment_date FROM @inserted;
       `);
 
     await logActivity(pool, resolvedUserId, 'create_subscription_payment', 'SUBSCRIPTIONPAYMENTS', result.recordset[0].payment_id);
@@ -1261,9 +1296,19 @@ router.get('/subscription/payments/:userId', async (req, res) => {
         .input('user_id', sql.UniqueIdentifier, userId)
         .input('amount', sql.Decimal(10, 2), amount)
         .query(`
+          DECLARE @inserted TABLE (
+            payment_id UNIQUEIDENTIFIER,
+            user_id UNIQUEIDENTIFIER,
+            amount DECIMAL(10, 2),
+            status NVARCHAR(30),
+            payment_date DATETIME2
+          );
+
           INSERT INTO dbo.SUBSCRIPTIONPAYMENTS (user_id, amount, status)
-          OUTPUT INSERTED.payment_id, INSERTED.user_id, INSERTED.amount, INSERTED.status, INSERTED.payment_date
+          OUTPUT INSERTED.payment_id, INSERTED.user_id, INSERTED.amount, INSERTED.status, INSERTED.payment_date INTO @inserted
           VALUES (@user_id, @amount, 'pending')
+
+          SELECT * FROM @inserted;
         `);
 
       const pendingPayment = pendingInsert.recordset[0];
@@ -1275,11 +1320,20 @@ router.get('/subscription/payments/:userId', async (req, res) => {
         .request()
         .input('payment_id', sql.UniqueIdentifier, pendingPayment.payment_id)
         .query(`
+          DECLARE @updated TABLE (
+            payment_id UNIQUEIDENTIFIER,
+            user_id UNIQUEIDENTIFIER,
+            amount DECIMAL(10, 2),
+            status NVARCHAR(30),
+            payment_date DATETIME2
+          );
+
           UPDATE dbo.SUBSCRIPTIONPAYMENTS
           SET status = 'paid'
-          OUTPUT INSERTED.payment_id AS _id, INSERTED.payment_id, INSERTED.user_id,
-                 INSERTED.amount, INSERTED.status, INSERTED.payment_date
+          OUTPUT INSERTED.payment_id, INSERTED.user_id, INSERTED.amount, INSERTED.status, INSERTED.payment_date INTO @updated
           WHERE payment_id = @payment_id
+
+          SELECT payment_id AS _id, payment_id, user_id, amount, status, payment_date FROM @updated;
         `);
 
       await logActivity(tx, userId, 'subscription_payment_processed', 'SUBSCRIPTIONPAYMENTS', pendingPayment.payment_id);
@@ -1398,16 +1452,16 @@ router.get('/subscription/payments/:userId', async (req, res) => {
           ORDER BY t.created_at DESC;
 
           -- LEFT JOIN demonstration
-          SELECT TOP 10 h.house_id, h.location, c.contact_id
+          SELECT TOP 10 h.house_id, h.location, c.application_id
           FROM dbo.HOUSERENTLISTINGS h
-          LEFT JOIN dbo.HOUSECONTACTS c ON c.house_id = h.house_id
+          LEFT JOIN dbo.APPLIEDHOUSERENTS c ON c.house_id = h.house_id
           ORDER BY h.created_at DESC;
 
           -- RIGHT JOIN demonstration
-          SELECT TOP 10 c.contact_id, c.house_id, h.location
+          SELECT TOP 10 c.application_id, c.house_id, h.location
           FROM dbo.HOUSERENTLISTINGS h
-          RIGHT JOIN dbo.HOUSECONTACTS c ON c.house_id = h.house_id
-          ORDER BY c.created_at DESC;
+          RIGHT JOIN dbo.APPLIEDHOUSERENTS c ON c.house_id = h.house_id
+          ORDER BY c.applied_at DESC;
 
           -- FULL OUTER JOIN demonstration
           SELECT TOP 10 r.listing_id, a.application_id

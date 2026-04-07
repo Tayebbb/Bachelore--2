@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,6 +9,7 @@ import { normalizeEmail } from '../utils/auth.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const LOCAL_USERS_FILE = path.join(__dirname, '..', 'db', 'local-users.json');
+const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_key';
 
 async function readLocalUsers() {
   try {
@@ -103,6 +105,10 @@ export const signup = async (req, res) => {
 
     await writeLocalUsers(localUsers);
 
+    const token = jwt.sign({ user_id: saved.user_id, role: 'student' }, JWT_SECRET, {
+      expiresIn: '7d',
+    });
+
     return res.status(201).json({
       message: 'User registered successfully',
       user: {
@@ -112,6 +118,7 @@ export const signup = async (req, res) => {
         phone: trimmedPhone,
         role: 'student',
       },
+      token,
     });
   } catch (err) {
     return res.status(500).json({ message: 'Server error', error: String(err.message || err) });
