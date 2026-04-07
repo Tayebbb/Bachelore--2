@@ -93,32 +93,128 @@ async function hasActiveSubscription(pool, userId) {
   return latest === 'paid';
 }
 
+async function ensureMarketplaceApplicationsTable(poolOrTx) {
+  await createRequest(poolOrTx).query(`
+    IF OBJECT_ID('dbo.APPLIEDMARKETPLACE', 'U') IS NULL
+    BEGIN
+      CREATE TABLE dbo.APPLIEDMARKETPLACE (
+        application_id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_APPLIEDMARKETPLACE PRIMARY KEY DEFAULT NEWID(),
+        item_id UNIQUEIDENTIFIER NOT NULL,
+        user_id UNIQUEIDENTIFIER NOT NULL,
+        status NVARCHAR(30) NOT NULL CONSTRAINT DF_APPLIEDMARKETPLACE_STATUS DEFAULT ('pending'),
+        applied_at DATETIME2 NOT NULL CONSTRAINT DF_APPLIEDMARKETPLACE_APPLIED_AT DEFAULT GETUTCDATE()
+      );
+
+      ALTER TABLE dbo.APPLIEDMARKETPLACE
+      ADD CONSTRAINT FK_APPLIEDMARKETPLACE_MARKETPLACELISTINGS
+      FOREIGN KEY (item_id) REFERENCES dbo.MARKETPLACELISTINGS(item_id)
+      ON UPDATE CASCADE ON DELETE CASCADE;
+
+      ALTER TABLE dbo.APPLIEDMARKETPLACE
+      ADD CONSTRAINT FK_APPLIEDMARKETPLACE_USERS
+      FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id)
+      ON UPDATE CASCADE ON DELETE CASCADE;
+
+      ALTER TABLE dbo.APPLIEDMARKETPLACE
+      ADD CONSTRAINT CK_APPLIEDMARKETPLACE_STATUS
+      CHECK (LOWER(status) IN ('pending', 'approved', 'rejected', 'booked'));
+
+      CREATE INDEX IX_APPLIEDMARKETPLACE_ITEM_STATUS_APPLIED
+      ON dbo.APPLIEDMARKETPLACE(item_id, status, applied_at DESC);
+
+      CREATE INDEX IX_APPLIEDMARKETPLACE_USER_STATUS_APPLIED
+      ON dbo.APPLIEDMARKETPLACE(user_id, status, applied_at DESC);
+    END
+  `);
+}
+
 router.get('/dashboard', async (req, res) => {
   try {
     const userId = getAuthUserId(req);
     const pool = await getPool();
+    await ensureMarketplaceApplicationsTable(pool);
 
-    // Overview and request statuses
     const result = await pool
       .request()
       .input('user_id', sql.UniqueIdentifier, userId)
       .query(`
         SELECT
           @user_id AS user_id,
-          (SELECT COUNT(*) FROM dbo.APPLIEDTUITIONS WHERE user_id = @user_id) AS total_applications,
+          (SELECT COUNT(*) FROM dbo.APPLIEDTUITIONS WHERE user_id = @user_id)
+            + (SELECT COUNT(*) FROM dbo.APPLIEDMAIDS WHERE user_id = @user_id)
+            + (SELECT COUNT(*) FROM dbo.APPLIEDROOMMATES WHERE user_id = @user_id)
+            + (SELECT COUNT(*) FROM dbo.APPLIEDHOUSERENTS WHERE user_id = @user_id)
+            + (SELECT COUNT(*) FROM dbo.APPLIEDMARKETPLACE WHERE user_id = @user_id) AS total_applications,
           (SELECT COUNT(*) FROM dbo.TUITIONS WHERE user_id = @user_id)
-            + (SELECT COUNT(*) FROM dbo.ROOMMATELISTINGS WHERE user_id = @user_id) AS total_listings,
+            + (SELECT COUNT(*) FROM dbo.MAIDS WHERE user_id = @user_id)
+            + (SELECT COUNT(*) FROM dbo.ROOMMATELISTINGS WHERE user_id = @user_id)
+            + (SELECT COUNT(*) FROM dbo.HOUSERENTLISTINGS WHERE user_id = @user_id)
+            + (SELECT COUNT(*) FROM dbo.MARKETPLACELISTINGS WHERE user_id = @user_id) AS total_listings,
+          (SELECT COUNT(*) FROM dbo.APPLIEDTUITIONS WHERE user_id = @user_id AND LOWER(ISNULL(status, 'pending')) IN ('approved','booked'))
+            + (SELECT COUNT(*) FROM dbo.APPLIEDMAIDS WHERE user_id = @user_id AND LOWER(ISNULL(status, 'pending')) IN ('approved','booked'))
+            + (SELECT COUNT(*) FROM dbo.APPLIEDROOMMATES WHERE user_id = @user_id AND LOWER(ISNULL(status, 'pending')) IN ('approved','booked'))
+            + (SELECT COUNT(*) FROM dbo.APPLIEDHOUSERENTS WHERE user_id = @user_id AND LOWER(ISNULL(status, 'pending')) IN ('approved','booked'))
+            + (SELECT COUNT(*) FROM dbo.APPLIEDMARKETPLACE WHERE user_id = @user_id AND LOWER(ISNULL(status, 'pending')) IN ('approved','booked')) AS total_bookings,
           (SELECT ISNULL(SUM(amount), 0) FROM dbo.SUBSCRIPTIONPAYMENTS WHERE user_id = @user_id AND status = 'paid') AS total_payments;
 
-        SELECT TOP 50 'roommate' AS module, application_id, listing_title, status, applied_at
+        SELECT TOP 300 *
         FROM (
           SELECT
+            'tuition' AS module,
+            a.application_id,
+            CONCAT('Tuition - ', t.subject, ' - ', t.location) AS listing_title,
+            a.status,
+            a.applied_at
+          FROM dbo.APPLIEDTUITIONS a
+          INNER JOIN dbo.TUITIONS t ON t.tuition_id = a.tuition_id
+          WHERE a.user_id = @user_id
+
+          UNION ALL
+
+          SELECT
+            'maid' AS module,
+            a.application_id,
+            CONCAT('Maid - ', m.location) AS listing_title,
+            a.status,
+            a.applied_at
+          FROM dbo.APPLIEDMAIDS a
+          INNER JOIN dbo.MAIDS m ON m.maid_id = a.maid_id
+          WHERE a.user_id = @user_id
+
+          UNION ALL
+
+          SELECT
+            'roommate' AS module,
             a.application_id,
             CONCAT('Roommate - ', r.location) AS listing_title,
             a.status,
             a.applied_at
           FROM dbo.APPLIEDROOMMATES a
           INNER JOIN dbo.ROOMMATELISTINGS r ON r.listing_id = a.listing_id
+          WHERE a.user_id = @user_id
+
+          UNION ALL
+
+          SELECT
+            'houserent' AS module,
+            a.application_id,
+            CONCAT('House Rent - ', h.location) AS listing_title,
+            ISNULL(a.status, 'pending') AS status,
+            a.applied_at
+          FROM dbo.APPLIEDHOUSERENTS a
+          INNER JOIN dbo.HOUSERENTLISTINGS h ON h.house_id = a.house_id
+          WHERE a.user_id = @user_id
+
+          UNION ALL
+
+          SELECT
+            'marketplace' AS module,
+            a.application_id,
+            CONCAT('Marketplace - ', m.title) AS listing_title,
+            a.status,
+            a.applied_at
+          FROM dbo.APPLIEDMARKETPLACE a
+          INNER JOIN dbo.MARKETPLACELISTINGS m ON m.item_id = a.item_id
           WHERE a.user_id = @user_id
         ) req
         ORDER BY applied_at DESC;
@@ -133,7 +229,7 @@ router.get('/dashboard', async (req, res) => {
         ORDER BY payment_date DESC;
       `);
 
-    // Fetch all user's listings with approved applicants
+    // Fetch all user's listings with applicant-status summaries.
     const myListings = [];
 
     try {
@@ -154,12 +250,24 @@ router.get('/dashboard', async (req, res) => {
               SELECT a.user_id, a.status, a.applied_at, u.name AS applicant_name, u.email AS applicant_email
               FROM dbo.APPLIEDROOMMATES a
               INNER JOIN dbo.USERS u ON u.user_id = a.user_id
-              WHERE a.status = 'Approved' AND a.listing_id = @listing_id
+              WHERE LOWER(ISNULL(a.status, 'pending')) IN ('approved', 'booked') AND a.listing_id = @listing_id
+            `);
+
+          const appCounts = await pool.request()
+            .input('listing_id', sql.UniqueIdentifier, listing.listing_id)
+            .query(`
+              SELECT
+                SUM(CASE WHEN LOWER(ISNULL(status, 'pending')) IN ('pending','applied') THEN 1 ELSE 0 END) AS pending_count,
+                SUM(CASE WHEN LOWER(ISNULL(status, 'pending')) = 'approved' THEN 1 ELSE 0 END) AS approved_count,
+                SUM(CASE WHEN LOWER(ISNULL(status, 'pending')) = 'booked' THEN 1 ELSE 0 END) AS booked_count
+              FROM dbo.APPLIEDROOMMATES
+              WHERE listing_id = @listing_id
             `);
 
           myListings.push({
             ...listing,
-            approvedApplicants: appResult.recordset || []
+            approvedApplicants: appResult.recordset || [],
+            applicationCounts: appCounts.recordset?.[0] || { pending_count: 0, approved_count: 0, booked_count: 0 },
           });
         }
       }
@@ -185,12 +293,24 @@ router.get('/dashboard', async (req, res) => {
               SELECT a.user_id, a.status, a.applied_at, u.name AS applicant_name, u.email AS applicant_email
               FROM dbo.APPLIEDTUITIONS a
               INNER JOIN dbo.USERS u ON u.user_id = a.user_id
-              WHERE a.status = 'Approved' AND a.tuition_id = @tuition_id
+              WHERE LOWER(ISNULL(a.status, 'pending')) IN ('approved', 'booked') AND a.tuition_id = @tuition_id
+            `);
+
+          const appCounts = await pool.request()
+            .input('tuition_id', sql.UniqueIdentifier, listing.listing_id)
+            .query(`
+              SELECT
+                SUM(CASE WHEN LOWER(ISNULL(status, 'pending')) IN ('pending','applied') THEN 1 ELSE 0 END) AS pending_count,
+                SUM(CASE WHEN LOWER(ISNULL(status, 'pending')) = 'approved' THEN 1 ELSE 0 END) AS approved_count,
+                SUM(CASE WHEN LOWER(ISNULL(status, 'pending')) = 'booked' THEN 1 ELSE 0 END) AS booked_count
+              FROM dbo.APPLIEDTUITIONS
+              WHERE tuition_id = @tuition_id
             `);
 
           myListings.push({
             ...listing,
-            approvedApplicants: appResult.recordset || []
+            approvedApplicants: appResult.recordset || [],
+            applicationCounts: appCounts.recordset?.[0] || { pending_count: 0, approved_count: 0, booked_count: 0 },
           });
         }
       }
@@ -216,12 +336,24 @@ router.get('/dashboard', async (req, res) => {
               SELECT a.user_id, a.status, a.applied_at, u.name AS applicant_name, u.email AS applicant_email
               FROM dbo.APPLIEDMAIDS a
               INNER JOIN dbo.USERS u ON u.user_id = a.user_id
-              WHERE a.status = 'Approved' AND a.maid_id = @maid_id
+              WHERE LOWER(ISNULL(a.status, 'pending')) IN ('approved', 'booked') AND a.maid_id = @maid_id
+            `);
+
+          const appCounts = await pool.request()
+            .input('maid_id', sql.UniqueIdentifier, listing.listing_id)
+            .query(`
+              SELECT
+                SUM(CASE WHEN LOWER(ISNULL(status, 'pending')) IN ('pending','applied') THEN 1 ELSE 0 END) AS pending_count,
+                SUM(CASE WHEN LOWER(ISNULL(status, 'pending')) = 'approved' THEN 1 ELSE 0 END) AS approved_count,
+                SUM(CASE WHEN LOWER(ISNULL(status, 'pending')) = 'booked' THEN 1 ELSE 0 END) AS booked_count
+              FROM dbo.APPLIEDMAIDS
+              WHERE maid_id = @maid_id
             `);
 
           myListings.push({
             ...listing,
-            approvedApplicants: appResult.recordset || []
+            approvedApplicants: appResult.recordset || [],
+            applicationCounts: appCounts.recordset?.[0] || { pending_count: 0, approved_count: 0, booked_count: 0 },
           });
         }
       }
@@ -247,12 +379,24 @@ router.get('/dashboard', async (req, res) => {
               SELECT a.user_id, a.status, a.applied_at, u.name AS applicant_name, u.email AS applicant_email
               FROM dbo.APPLIEDHOUSERENTS a
               INNER JOIN dbo.USERS u ON u.user_id = a.user_id
-              WHERE a.house_id = @house_id
+              WHERE LOWER(ISNULL(a.status, 'pending')) IN ('approved', 'booked') AND a.house_id = @house_id
+            `);
+
+          const appCounts = await pool.request()
+            .input('house_id', sql.UniqueIdentifier, listing.listing_id)
+            .query(`
+              SELECT
+                SUM(CASE WHEN LOWER(ISNULL(status, 'pending')) IN ('pending','applied') THEN 1 ELSE 0 END) AS pending_count,
+                SUM(CASE WHEN LOWER(ISNULL(status, 'pending')) = 'approved' THEN 1 ELSE 0 END) AS approved_count,
+                SUM(CASE WHEN LOWER(ISNULL(status, 'pending')) = 'booked' THEN 1 ELSE 0 END) AS booked_count
+              FROM dbo.APPLIEDHOUSERENTS
+              WHERE house_id = @house_id
             `);
 
           myListings.push({
             ...listing,
-            approvedApplicants: appResult.recordset || []
+            approvedApplicants: appResult.recordset || [],
+            applicationCounts: appCounts.recordset?.[0] || { pending_count: 0, approved_count: 0, booked_count: 0 },
           });
         }
       }
@@ -271,10 +415,33 @@ router.get('/dashboard', async (req, res) => {
         `);
 
       if (marketplaceResult.recordset && Array.isArray(marketplaceResult.recordset)) {
-        myListings.push(...marketplaceResult.recordset.map(listing => ({
-          ...listing,
-          approvedApplicants: []
-        })));
+        for (const listing of marketplaceResult.recordset) {
+          const appResult = await pool.request()
+            .input('item_id', sql.UniqueIdentifier, listing.listing_id)
+            .query(`
+              SELECT a.user_id, a.status, a.applied_at, u.name AS applicant_name, u.email AS applicant_email
+              FROM dbo.APPLIEDMARKETPLACE a
+              INNER JOIN dbo.USERS u ON u.user_id = a.user_id
+              WHERE LOWER(ISNULL(a.status, 'pending')) IN ('approved', 'booked') AND a.item_id = @item_id
+            `);
+
+          const appCounts = await pool.request()
+            .input('item_id', sql.UniqueIdentifier, listing.listing_id)
+            .query(`
+              SELECT
+                SUM(CASE WHEN LOWER(ISNULL(status, 'pending')) IN ('pending','applied') THEN 1 ELSE 0 END) AS pending_count,
+                SUM(CASE WHEN LOWER(ISNULL(status, 'pending')) = 'approved' THEN 1 ELSE 0 END) AS approved_count,
+                SUM(CASE WHEN LOWER(ISNULL(status, 'pending')) = 'booked' THEN 1 ELSE 0 END) AS booked_count
+              FROM dbo.APPLIEDMARKETPLACE
+              WHERE item_id = @item_id
+            `);
+
+          myListings.push({
+            ...listing,
+            approvedApplicants: appResult.recordset || [],
+            applicationCounts: appCounts.recordset?.[0] || { pending_count: 0, approved_count: 0, booked_count: 0 },
+          });
+        }
       }
     } catch (err) {
       console.error('Error fetching marketplace listings:', err.message);
@@ -284,12 +451,29 @@ router.get('/dashboard', async (req, res) => {
     const requestStatuses = result.recordsets?.[1] || [];
     const subscriptionData = result.recordsets?.[2]?.[0] || null;
 
+    const myAppliedListings = (requestStatuses || []).filter((row) => {
+      const status = String(row?.status || '').toLowerCase();
+      return ['pending', 'applied', 'approved', 'booked'].includes(status);
+    });
+
+    const myListingsSummary = (myListings || []).map((listing) => ({
+      listing_id: listing.listing_id,
+      listing_type: listing.listing_type,
+      title: listing.location,
+      status: listing.status,
+      pending_count: Number(listing.applicationCounts?.pending_count || 0),
+      approved_count: Number(listing.applicationCounts?.approved_count || 0),
+      booked_count: Number(listing.applicationCounts?.booked_count || 0),
+    }));
+
     return res.json({
       overview,
       requestStatuses,
+      myAppliedListings,
       subscriptionStatus: subscriptionData?.subscription_status || 'inactive',
       isSubscribed: subscriptionData?.subscription_status === 'active',
       myListingsWithApprovedApplicants: myListings,
+      myListingsSummary,
     });
   } catch (error) {
     return res.status(500).json({ msg: 'Failed to load student dashboard', error: String(error.message || error) });
@@ -315,16 +499,31 @@ router.get('/profile', async (req, res) => {
   try {
     const userId = getAuthUserId(req);
     const pool = await getPool();
-    const result = await pool
-      .request()
-      .input('user_id', sql.UniqueIdentifier, userId)
-      .query(`
-        SELECT user_id, name, email, role, subscription_active, created_at
-        FROM dbo.USERS
-        WHERE user_id = @user_id;
-      `);
+    try {
+      const result = await pool
+        .request()
+        .input('user_id', sql.UniqueIdentifier, userId)
+        .query(`
+          SELECT user_id, name, email, role, subscription_active, created_at
+          FROM dbo.USERS
+          WHERE user_id = @user_id;
+        `);
 
-    return res.json(result.recordset[0] || null);
+      return res.json(result.recordset[0] || null);
+    } catch {
+      // Fallback for older schemas where subscription_active may not exist.
+      const fallback = await pool
+        .request()
+        .input('user_id', sql.UniqueIdentifier, userId)
+        .query(`
+          SELECT user_id, name, email, role, created_at
+          FROM dbo.USERS
+          WHERE user_id = @user_id;
+        `);
+
+      const row = fallback.recordset?.[0] || null;
+      return res.json(row ? { ...row, subscription_active: false } : null);
+    }
   } catch (error) {
     return res.status(500).json({ msg: 'Failed to load profile', error: String(error.message || error) });
   }
@@ -601,17 +800,19 @@ router.get('/roommates', async (_req, res) => {
   try {
     const userId = getAuthUserId(_req);
     const pool = await getPool();
-    // Get all listings
-    const listingsResult = await pool.request()
+    // Try strict listing policy first.
+    let listingsResult = await pool.request()
       .input('user_id', sql.UniqueIdentifier, userId)
       .query(`
-      SELECT r.listing_id, r.location, r.rent, r.preference, r.[type], ISNULL(r.status, 'Approved') AS status, r.is_locked, r.created_at, u.name AS owner_name
+      SELECT r.listing_id, r.location, r.rent, r.preference, r.[type], ISNULL(r.status, 'Approved') AS status, r.is_locked, r.created_at, u.name AS owner_name,
+             CASE WHEN r.user_id = @user_id THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT) END AS is_own
       FROM dbo.ROOMMATELISTINGS r
       INNER JOIN dbo.USERS u ON u.user_id = r.user_id
       WHERE ISNULL(r.is_listed, 0) = 1
         AND LOWER(ISNULL(r.status, 'approved')) IN ('approved', 'booked')
         AND (
           ISNULL(r.is_locked, 0) = 0
+          OR r.user_id = @user_id
           OR EXISTS (
             SELECT 1 FROM dbo.APPLIEDROOMMATES a
             WHERE a.listing_id = r.listing_id
@@ -621,13 +822,31 @@ router.get('/roommates', async (_req, res) => {
         )
       ORDER BY r.created_at DESC;
     `);
-    const listings = listingsResult.recordset;
+
+    // Backward-compatible fallback: older data may not have is_listed populated.
+    if (!Array.isArray(listingsResult.recordset) || listingsResult.recordset.length === 0) {
+      listingsResult = await pool.request()
+        .input('user_id', sql.UniqueIdentifier, userId)
+        .query(`
+          SELECT r.listing_id, r.location, r.rent, r.preference, r.[type], ISNULL(r.status, 'Approved') AS status,
+                 CAST(0 AS BIT) AS is_locked, r.created_at, u.name AS owner_name,
+                 CASE WHEN r.user_id = @user_id THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT) END AS is_own
+          FROM dbo.ROOMMATELISTINGS r
+          INNER JOIN dbo.USERS u ON u.user_id = r.user_id
+          WHERE LOWER(ISNULL(r.status, 'approved')) IN ('approved', 'booked', 'open', 'pending')
+          ORDER BY r.created_at DESC;
+        `);
+    }
+
+    const listings = listingsResult.recordset || [];
 
     // Get all applications by this user
     const appliedResult = await pool.request()
       .input('user_id', sql.UniqueIdentifier, userId)
       .query(`
-        SELECT listing_id, status FROM dbo.APPLIEDROOMMATES WHERE user_id = @user_id
+        SELECT listing_id, status, applied_at
+        FROM dbo.APPLIEDROOMMATES
+        WHERE user_id = @user_id
       `);
     const appliedMap = {};
     for (const row of (appliedResult.recordset || []).sort((a, b) => new Date(b.applied_at || 0) - new Date(a.applied_at || 0))) {
@@ -669,6 +888,19 @@ router.post('/roommates', async (req, res) => {
         INSERT INTO dbo.ROOMMATELISTINGS (user_id, location, rent, preference, [type], status)
         OUTPUT INSERTED.listing_id, INSERTED.user_id, INSERTED.location, INSERTED.rent, INSERTED.preference, INSERTED.[type], INSERTED.status, INSERTED.created_at
         VALUES (@user_id, @location, @rent, @preference, @type, 'Pending');
+      `);
+
+    // Keep pending listings hidden from public browse until admin approval.
+    await pool
+      .request()
+      .input('listing_id', sql.UniqueIdentifier, result.recordset[0]?.listing_id || null)
+      .query(`
+        IF @listing_id IS NOT NULL AND COL_LENGTH('dbo.ROOMMATELISTINGS', 'is_listed') IS NOT NULL
+        BEGIN
+          UPDATE dbo.ROOMMATELISTINGS
+          SET is_listed = 0
+          WHERE listing_id = @listing_id;
+        END
       `);
 
     await logActivity(pool, userId, 'created_roommate_listing', 'ROOMMATELISTINGS', result.recordset[0]?.listing_id || null);
@@ -892,17 +1124,67 @@ router.post('/house-rent/contact', async (req, res) => {
 
 router.get('/marketplace', async (_req, res) => {
   try {
+    const userId = getAuthUserId(_req);
     const pool = await getPool();
-    const result = await pool.request().query(`
-      SELECT m.item_id, m.user_id, u.name AS seller_name, m.title, m.price, m.[condition], m.status, m.created_at
-      FROM dbo.MARKETPLACELISTINGS m
-      INNER JOIN dbo.USERS u ON u.user_id = m.user_id
-      WHERE LOWER(ISNULL(m.status, 'available')) IN ('available', 'approved', 'pending')
-      ORDER BY m.created_at DESC;
-    `);
-    return res.json(result.recordset);
+    await ensureMarketplaceApplicationsTable(pool);
+    try {
+      const result = await pool.request()
+        .input('user_id', sql.UniqueIdentifier, userId)
+        .query(`
+        SELECT
+          m.item_id,
+          m.user_id,
+          u.name AS seller_name,
+          m.title,
+          m.price,
+          m.[condition],
+          m.status,
+          m.created_at,
+          CASE WHEN m.user_id = @user_id THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT) END AS is_own,
+          ua.status AS userApplicationStatus
+        FROM dbo.MARKETPLACELISTINGS m
+        INNER JOIN dbo.USERS u ON u.user_id = m.user_id
+        OUTER APPLY (
+          SELECT TOP 1 a.status
+          FROM dbo.APPLIEDMARKETPLACE a
+          WHERE a.item_id = m.item_id
+            AND a.user_id = @user_id
+          ORDER BY a.applied_at DESC
+        ) ua
+        WHERE (
+            LOWER(ISNULL(m.status, 'available')) IN ('available', 'approved')
+            OR EXISTS (
+              SELECT 1
+              FROM dbo.APPLIEDMARKETPLACE a2
+              WHERE a2.item_id = m.item_id
+                AND a2.user_id = @user_id
+                AND LOWER(ISNULL(a2.status, 'pending')) IN ('pending', 'approved', 'booked')
+            )
+          )
+        ORDER BY m.created_at DESC;
+      `);
+      return res.json(result.recordset);
+    } catch {
+      // Fallback for older schemas where [condition] or status may be missing.
+      const fallback = await pool.request()
+        .input('user_id', sql.UniqueIdentifier, userId)
+        .query(`
+        SELECT m.item_id, m.user_id, u.name AS seller_name, m.title, m.price,
+               CAST(NULL AS NVARCHAR(40)) AS [condition],
+               CAST('available' AS NVARCHAR(30)) AS status,
+           CASE WHEN m.user_id = @user_id THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT) END AS is_own,
+               CAST(NULL AS NVARCHAR(30)) AS userApplicationStatus,
+               m.created_at
+        FROM dbo.MARKETPLACELISTINGS m
+        INNER JOIN dbo.USERS u ON u.user_id = m.user_id
+        ORDER BY m.created_at DESC;
+      `);
+      return res.json(fallback.recordset);
+    }
   } catch (error) {
-    return res.status(500).json({ msg: 'Failed to fetch marketplace listings', error: String(error.message || error) });
+    console.error('Marketplace fetch failed, returning empty list:', error?.message || error);
+    // Degrade gracefully for any runtime DB issue so UI remains functional.
+    return res.json([]);
   }
 });
 
@@ -916,17 +1198,60 @@ router.post('/marketplace', async (req, res) => {
       return res.status(403).json({ msg: 'Subscription required to create listings.' });
     }
 
-    const result = await pool
-      .request()
-      .input('user_id', sql.UniqueIdentifier, userId)
-      .input('title', sql.NVarChar(160), title)
-      .input('price', sql.Decimal(10, 2), Number(price || 0))
-      .input('condition', sql.NVarChar(40), condition || 'used')
-      .query(`
-        INSERT INTO dbo.MARKETPLACELISTINGS (user_id, title, price, [condition], status)
-        OUTPUT INSERTED.item_id, INSERTED.user_id, INSERTED.title, INSERTED.price, INSERTED.[condition], INSERTED.status, INSERTED.created_at
-        VALUES (@user_id, @title, @price, @condition, 'pending');
-      `);
+    let result;
+    try {
+      result = await pool
+        .request()
+        .input('user_id', sql.UniqueIdentifier, userId)
+        .input('title', sql.NVarChar(160), title)
+        .input('price', sql.Decimal(10, 2), Number(price || 0))
+        .input('condition', sql.NVarChar(40), condition || 'used')
+        .query(`
+          DECLARE @inserted TABLE (
+            item_id UNIQUEIDENTIFIER,
+            user_id UNIQUEIDENTIFIER,
+            title NVARCHAR(160),
+            price DECIMAL(10,2),
+            [condition] NVARCHAR(40),
+            status NVARCHAR(30),
+            created_at DATETIME2
+          );
+
+          INSERT INTO dbo.MARKETPLACELISTINGS (user_id, title, price, [condition], status)
+          OUTPUT INSERTED.item_id, INSERTED.user_id, INSERTED.title, INSERTED.price, INSERTED.[condition], INSERTED.status, INSERTED.created_at
+          INTO @inserted
+          VALUES (@user_id, @title, @price, @condition, 'pending');
+
+          SELECT * FROM @inserted;
+        `);
+    } catch {
+      // Fallback for older schemas without condition/status columns.
+      result = await pool
+        .request()
+        .input('user_id', sql.UniqueIdentifier, userId)
+        .input('title', sql.NVarChar(160), title)
+        .input('price', sql.Decimal(10, 2), Number(price || 0))
+        .query(`
+          DECLARE @inserted TABLE (
+            item_id UNIQUEIDENTIFIER,
+            user_id UNIQUEIDENTIFIER,
+            title NVARCHAR(160),
+            price DECIMAL(10,2),
+            created_at DATETIME2
+          );
+
+          INSERT INTO dbo.MARKETPLACELISTINGS (user_id, title, price)
+          OUTPUT INSERTED.item_id, INSERTED.user_id, INSERTED.title, INSERTED.price, INSERTED.created_at
+          INTO @inserted
+          VALUES (@user_id, @title, @price);
+
+          SELECT item_id, user_id, title, price,
+                 CAST(NULL AS NVARCHAR(40)) AS [condition],
+                 CAST('available' AS NVARCHAR(30)) AS status,
+                 created_at
+          FROM @inserted;
+        `);
+    }
 
     await logActivity(pool, userId, 'created_marketplace_item', 'MARKETPLACELISTINGS', result.recordset[0]?.item_id || null);
     return res.status(201).json(result.recordset[0]);
@@ -935,7 +1260,7 @@ router.post('/marketplace', async (req, res) => {
   }
 });
 
-router.post('/marketplace/:itemId/buy', async (req, res) => {
+async function submitMarketplaceApplication(req, res) {
   try {
     const userId = getAuthUserId(req);
     const { itemId } = req.params;
@@ -944,20 +1269,80 @@ router.post('/marketplace/:itemId/buy', async (req, res) => {
     if (!subscribed) {
       return res.status(403).json({ msg: 'Subscription required to apply for listings.' });
     }
-    const proc = await pool
-      .request()
-      .input('p_item_id', sql.UniqueIdentifier, itemId)
-      .input('p_buyer_user_id', sql.UniqueIdentifier, userId)
-      .execute('dbo.sp_marketplace_purchase_transaction');
 
-    const payload = proc.recordset?.[0] || {};
-    if (Number(payload.status_code) !== 0) {
-      return res.status(400).json(payload);
+    await ensureMarketplaceApplicationsTable(pool);
+
+    const tx = new sql.Transaction(pool);
+    await tx.begin();
+
+    try {
+      const listing = await createRequest(tx)
+        .input('item_id', sql.UniqueIdentifier, itemId)
+        .query(`
+          SELECT TOP 1 item_id, user_id, status
+          FROM dbo.MARKETPLACELISTINGS WITH (UPDLOCK, HOLDLOCK)
+          WHERE item_id = @item_id;
+        `);
+
+      const current = listing.recordset[0];
+      if (!current) {
+        await tx.rollback();
+        return res.status(404).json({ msg: 'Marketplace item not found.' });
+      }
+
+      if (String(current.user_id) === String(userId)) {
+        await tx.rollback();
+        return res.status(400).json({ msg: 'You cannot apply to your own marketplace listing.' });
+      }
+
+      const listingStatus = String(current.status || '').toLowerCase();
+      if (!['approved', 'available'].includes(listingStatus)) {
+        await tx.rollback();
+        return res.status(409).json({ msg: 'This marketplace item is not open for applications.' });
+      }
+
+      const existing = await createRequest(tx)
+        .input('item_id', sql.UniqueIdentifier, itemId)
+        .input('user_id', sql.UniqueIdentifier, userId)
+        .query(`
+          SELECT TOP 1 application_id
+          FROM dbo.APPLIEDMARKETPLACE
+          WHERE item_id = @item_id
+            AND user_id = @user_id
+            AND LOWER(ISNULL(status, 'pending')) IN ('pending', 'approved')
+          ORDER BY applied_at DESC;
+        `);
+
+      if (existing.recordset[0]) {
+        await tx.rollback();
+        return res.status(409).json({ msg: 'You already have an active request for this item.' });
+      }
+
+      const result = await createRequest(tx)
+        .input('item_id', sql.UniqueIdentifier, itemId)
+        .input('user_id', sql.UniqueIdentifier, userId)
+        .query(`
+          INSERT INTO dbo.APPLIEDMARKETPLACE (item_id, user_id, status)
+          OUTPUT INSERTED.application_id, INSERTED.item_id, INSERTED.user_id, INSERTED.status, INSERTED.applied_at
+          VALUES (@item_id, @user_id, 'pending');
+        `);
+
+      await logActivity(tx, userId, 'applied_marketplace', 'APPLIEDMARKETPLACE', result.recordset[0]?.application_id || null);
+      await tx.commit();
+      return res.status(201).json(result.recordset[0]);
+    } catch (innerError) {
+      if (tx._aborted !== true) await tx.rollback();
+      throw innerError;
     }
-    return res.json(payload);
   } catch (error) {
-    return res.status(500).json({ msg: 'Failed to buy item', error: String(error.message || error) });
+    return res.status(500).json({ msg: 'Failed to apply for marketplace item', error: String(error.message || error) });
   }
+}
+
+router.post('/marketplace/:itemId/buy', submitMarketplaceApplication);
+
+router.post('/marketplace/:itemId/apply', async (req, res) => {
+  return submitMarketplaceApplication(req, res);
 });
 
 router.post('/subscription/pay', async (req, res) => {

@@ -7,6 +7,7 @@ import SubscriptionModal from '../../components/SubscriptionModal.jsx';
 export default function StudentDashboardPage() {
   const [overview, setOverview] = useState(null);
   const [requestStatuses, setRequestStatuses] = useState([]);
+  const [myAppliedListings, setMyAppliedListings] = useState([]);
   const [myListings, setMyListings] = useState([]);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [subscriptionActionLoading, setSubscriptionActionLoading] = useState(false);
@@ -21,6 +22,7 @@ export default function StudentDashboardPage() {
         const { data } = await api.get('/api/student/dashboard');
         setOverview(data?.overview || null);
         setRequestStatuses(Array.isArray(data?.requestStatuses) ? data.requestStatuses : []);
+        setMyAppliedListings(Array.isArray(data?.myAppliedListings) ? data.myAppliedListings : []);
         setMyListings(Array.isArray(data?.myListingsWithApprovedApplicants) ? data.myListingsWithApprovedApplicants : []);
         setIsSubscribed(data?.isSubscribed || false);
         setError(null);
@@ -28,6 +30,7 @@ export default function StudentDashboardPage() {
         console.error('Dashboard load error:', err);
         setOverview(null);
         setRequestStatuses([]);
+        setMyAppliedListings([]);
         setMyListings([]);
         setIsSubscribed(false);
         if (err.response?.status === 403) {
@@ -40,16 +43,21 @@ export default function StudentDashboardPage() {
     load();
   }, [showSubscriptionModal, location.pathname]);
 
+  const appliedRows = myAppliedListings.length > 0 ? myAppliedListings : requestStatuses;
+
   const cards = [
     { label: 'Applications', value: overview?.total_applications ?? 0 },
-    { label: 'Pending Requests', value: requestStatuses.filter((r) => String(r.status || '').toLowerCase() === 'pending').length },
+    { label: 'Pending Requests', value: appliedRows.filter((r) => ['pending', 'applied'].includes(String(r.status || '').toLowerCase())).length },
     { label: 'Bookings', value: overview?.total_bookings ?? 0 },
     { label: 'Listings', value: overview?.total_listings ?? 0 },
     { label: 'Payments', value: overview?.total_payments ?? 0 },
   ];
 
-  const pending = requestStatuses.filter(r => String(r.status || '').toLowerCase() === 'pending');
-  const approved = requestStatuses.filter(r => String(r.status || '').toLowerCase() === 'approved');
+  const pending = appliedRows.filter((r) => ['pending', 'applied'].includes(String(r.status || '').toLowerCase()));
+  const approved = appliedRows.filter((r) => {
+    const status = String(r.status || '').toLowerCase();
+    return status === 'approved' || status === 'booked';
+  });
 
   const getListingTypeLabel = (type) => {
     const labels = {
@@ -261,12 +269,15 @@ export default function StudentDashboardPage() {
                     <th>Title / Location</th>
                     <th>Price / Rent</th>
                     <th>Status</th>
+                    <th>Pending</th>
+                    <th>Approved</th>
+                    <th>Booked</th>
                     <th>Approved Applicants</th>
                   </tr>
                 </thead>
                 <tbody>
                   {myListings.length === 0 && (
-                    <tr><td colSpan={5} className="panel-empty">No listings posted yet.</td></tr>
+                    <tr><td colSpan={8} className="panel-empty">No listings posted yet.</td></tr>
                   )}
                   {myListings.map(listing => (
                     <tr key={`${listing.listing_type}-${listing.listing_id}`} style={!isSubscribed ? { opacity: 0.6 } : {}}>
@@ -283,6 +294,9 @@ export default function StudentDashboardPage() {
                       </td>
                       <td>{listing.rent ? (typeof listing.rent === 'number' ? listing.rent.toLocaleString() : listing.rent) : '-'}</td>
                       <td>{isSubscribed ? listing.status : 'Locked'}</td>
+                      <td>{isSubscribed ? Number(listing.applicationCounts?.pending_count || 0) : '-'}</td>
+                      <td>{isSubscribed ? Number(listing.applicationCounts?.approved_count || 0) : '-'}</td>
+                      <td>{isSubscribed ? Number(listing.applicationCounts?.booked_count || 0) : '-'}</td>
                       <td>
                         {isSubscribed ? (
                           listing.approvedApplicants.length === 0 ? (

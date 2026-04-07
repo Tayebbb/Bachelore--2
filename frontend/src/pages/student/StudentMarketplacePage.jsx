@@ -47,17 +47,17 @@ export default function StudentMarketplacePage() {
     }
   };
 
-  const buy = async (itemId) => {
+  const apply = async (itemId) => {
     if (!isSubscribed) {
-      setPopup({ show: true, message: 'Subscribe to buy items!' });
+      setPopup({ show: true, message: 'Subscribe to apply for items!' });
       return;
     }
     try {
-      await api.post(`/api/student/marketplace/${itemId}/buy`);
+      await api.post(`/api/student/marketplace/${itemId}/apply`);
       setPopup({ show: true, message: 'Request submitted for approval!' });
       load();
-    } catch {
-      setPopup({ show: true, message: 'Failed to submit request.' });
+    } catch (err) {
+      setPopup({ show: true, message: err?.response?.data?.msg || 'Failed to submit request.' });
     }
   };
 
@@ -130,19 +130,57 @@ export default function StudentMarketplacePage() {
                     <tr key={r.item_id}>
                       <td>{r.title}</td><td>{r.price}</td><td>{r.condition}</td><td>{r.status}</td>
                       <td>
-                        {!isSubscribed ? (
-                          <button type="button" className="panel-btn-sm" style={{ background: '#ccc', color: '#888', cursor: 'not-allowed', opacity: 0.7 }} disabled>
-                            Locked
-                          </button>
-                        ) : r.userApplicationStatus && (String(r.userApplicationStatus).toLowerCase() === 'pending' || String(r.userApplicationStatus).toLowerCase() === 'applied') ? (
-                          <button type="button" className="panel-btn-sm" style={{ background: '#ccc', color: '#888', cursor: 'not-allowed', opacity: 0.7 }} disabled>
-                            Applied
-                          </button>
-                        ) : (
-                          <button type="button" className="panel-btn-sm success" onClick={() => buy(r.item_id)}>
-                            Apply / Book
-                          </button>
-                        )}
+                        {(() => {
+                          const appStatus = String(r.userApplicationStatus || '').toLowerCase();
+                          const isOwnListing = Boolean(r.is_own);
+
+                          if (!isSubscribed) {
+                            return (
+                              <button type="button" className="panel-btn-sm" style={{ background: '#ccc', color: '#888', cursor: 'not-allowed', opacity: 0.7 }} disabled>
+                                Locked
+                              </button>
+                            );
+                          }
+
+                          if (isOwnListing) {
+                            return (
+                              <button type="button" className="panel-btn-sm" style={{ background: '#e9ecef', color: '#495057', cursor: 'not-allowed', opacity: 0.95 }} disabled>
+                                <i className="bi bi-person-fill" style={{ marginRight: 6 }} />
+                                My Listing
+                              </button>
+                            );
+                          }
+
+                          if (appStatus === 'pending') {
+                            return (
+                              <button type="button" className="panel-btn-sm" style={{ background: '#ccc', color: '#888', cursor: 'not-allowed', opacity: 0.7 }} disabled>
+                                Pending Approval
+                              </button>
+                            );
+                          }
+
+                          if (appStatus === 'approved' || appStatus === 'booked') {
+                            return (
+                              <button type="button" className="panel-btn-sm" style={{ background: '#cfe8ff', color: '#174ea6', cursor: 'not-allowed', opacity: 0.9 }} disabled>
+                                Approved
+                              </button>
+                            );
+                          }
+
+                          if (appStatus === 'rejected') {
+                            return (
+                              <button type="button" className="panel-btn-sm primary" onClick={() => apply(r.item_id)}>
+                                Reapply
+                              </button>
+                            );
+                          }
+
+                          return (
+                            <button type="button" className="panel-btn-sm success" onClick={() => apply(r.item_id)}>
+                              Apply
+                            </button>
+                          );
+                        })()}
                       </td>
                     </tr>
                   ))}

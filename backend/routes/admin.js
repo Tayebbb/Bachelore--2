@@ -5,6 +5,35 @@ import { getAuthUserId, requireAuth, requireRole } from '../utils/auth.js';
 
 const router = express.Router();
 
+async function ensureMarketplaceApplicationsTable(poolOrTx) {
+	await createRequest(poolOrTx).query(`
+		IF OBJECT_ID('dbo.APPLIEDMARKETPLACE', 'U') IS NULL
+		BEGIN
+			CREATE TABLE dbo.APPLIEDMARKETPLACE (
+				application_id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_APPLIEDMARKETPLACE PRIMARY KEY DEFAULT NEWID(),
+				item_id UNIQUEIDENTIFIER NOT NULL,
+				user_id UNIQUEIDENTIFIER NOT NULL,
+				status NVARCHAR(30) NOT NULL CONSTRAINT DF_APPLIEDMARKETPLACE_STATUS DEFAULT ('pending'),
+				applied_at DATETIME2 NOT NULL CONSTRAINT DF_APPLIEDMARKETPLACE_APPLIED_AT DEFAULT GETUTCDATE()
+			);
+
+			ALTER TABLE dbo.APPLIEDMARKETPLACE
+			ADD CONSTRAINT FK_APPLIEDMARKETPLACE_MARKETPLACELISTINGS
+			FOREIGN KEY (item_id) REFERENCES dbo.MARKETPLACELISTINGS(item_id)
+			ON UPDATE CASCADE ON DELETE CASCADE;
+
+			ALTER TABLE dbo.APPLIEDMARKETPLACE
+			ADD CONSTRAINT FK_APPLIEDMARKETPLACE_USERS
+			FOREIGN KEY (user_id) REFERENCES dbo.USERS(user_id)
+			ON UPDATE CASCADE ON DELETE CASCADE;
+
+			ALTER TABLE dbo.APPLIEDMARKETPLACE
+			ADD CONSTRAINT CK_APPLIEDMARKETPLACE_STATUS
+			CHECK (LOWER(status) IN ('pending', 'approved', 'rejected', 'booked'));
+		END
+	`);
+}
+
 router.post('/login', adminLogin);
 
 router.use(requireAuth, requireRole('admin'));
@@ -128,6 +157,7 @@ router.get('/users', async (req, res) => {
 router.get('/applications', async (_req, res) => {
 	try {
 		const pool = await getPool();
+		await ensureMarketplaceApplicationsTable(pool);
 		const result = await pool.request().query(`
 			SELECT TOP 500
 				'tuition' AS module,
@@ -199,6 +229,24 @@ router.get('/applications', async (_req, res) => {
 			INNER JOIN dbo.USERS u ON u.user_id = hc.user_id
 			WHERE LOWER(ISNULL(hc.status, 'pending')) = 'pending'
 
+			UNION ALL
+
+			SELECT TOP 500
+				'marketplace' AS module,
+				a.application_id,
+				a.status,
+				a.applied_at,
+				a.item_id AS listing_id,
+				CONCAT('Marketplace - ', m.title) AS listing_title,
+				u.user_id AS applicant_user_id,
+				u.name AS applicant_name,
+				u.email AS applicant_email,
+				u.phone AS applicant_contact
+			FROM dbo.APPLIEDMARKETPLACE a
+			INNER JOIN dbo.MARKETPLACELISTINGS m ON m.item_id = a.item_id
+			INNER JOIN dbo.USERS u ON u.user_id = a.user_id
+			WHERE LOWER(ISNULL(a.status, 'pending')) = 'pending'
+
 			ORDER BY applied_at DESC;
 		`);
 
@@ -211,6 +259,7 @@ router.get('/applications', async (_req, res) => {
 router.post('/applications/:module/:applicationId/review', async (req, res) => {
 	try {
 		const { module, applicationId } = req.params;
+		const normalizedModule = String(module).toLowerCase();
 		const decision = String(req.body.decision || '').toLowerCase();
 		if (!['approved', 'rejected'].includes(decision)) {
 			return res.status(400).json({ msg: 'decision must be approved or rejected.' });
@@ -256,14 +305,26 @@ router.post('/applications/:module/:applicationId/review', async (req, res) => {
 				listingStatusApproved: 'approved',
 				listingStatusRejected: 'approved',
 				bookingTable: 'dbo.BOOKEDHOUSERENTS',
+				hasLockColumn: true,
 			},
-		}[String(module).toLowerCase()];
+			marketplace: {
+				applicationTable: 'dbo.APPLIEDMARKETPLACE',
+				applicationIdCol: 'application_id',
+				listingIdCol: 'item_id',
+				listingTable: 'dbo.MARKETPLACELISTINGS',
+				listingTableIdCol: 'item_id',
+				listingStatusApproved: 'sold',
+				listingStatusRejected: 'approved',
+				hasLockColumn: false,
+			},
+		}[normalizedModule];
 
 		if (!target) {
 			return res.status(400).json({ msg: 'Unsupported module.' });
 		}
 
 		const pool = await getPool();
+		await ensureMarketplaceApplicationsTable(pool);
 		const actorId = getAuthUserId(req);
 		const tx = new sql.Transaction(pool);
 		await tx.begin();
@@ -289,7 +350,7 @@ router.post('/applications/:module/:applicationId/review', async (req, res) => {
 			}
 
 			const accepting = decision === 'approved';
-			const finalStatus = accepting ? 'approved' : 'rejected';
+			const finalStatus = accepting ? 'booked' : 'rejected';
 
 			const updated = await createRequest(tx)
 				.input('application_id', sql.UniqueIdentifier, applicationId)
@@ -318,8 +379,7 @@ router.post('/applications/:module/:applicationId/review', async (req, res) => {
 					.input('listing_id', sql.UniqueIdentifier, current.listing_id)
 					.query(`
 						UPDATE ${target.listingTable}
-						SET status = '${target.listingStatusApproved}',
-							is_locked = 1
+						SET status = '${target.listingStatusApproved}'${target.hasLockColumn ? ', is_locked = 1' : ''}
 						WHERE ${target.listingTableIdCol} = @listing_id;
 					`);
 
@@ -334,23 +394,28 @@ router.post('/applications/:module/:applicationId/review', async (req, res) => {
 							AND LOWER(ISNULL(status, 'pending')) = 'pending';
 					`);
 
-				await createRequest(tx)
-					.input('application_id', sql.UniqueIdentifier, applicationId)
-					.query(`
-						IF NOT EXISTS (
-							SELECT 1 FROM ${target.bookingTable} WHERE application_id = @application_id
-						)
-						BEGIN
-							INSERT INTO ${target.bookingTable} (application_id, booking_status)
-							VALUES (@application_id, 'confirmed');
-						END
-					`);
+				if (target.bookingTable) {
+					await createRequest(tx)
+						.input('application_id', sql.UniqueIdentifier, applicationId)
+						.query(`
+							IF NOT EXISTS (
+								SELECT 1 FROM ${target.bookingTable} WHERE application_id = @application_id
+							)
+							BEGIN
+								INSERT INTO ${target.bookingTable} (application_id, booking_status)
+								VALUES (@application_id, 'confirmed');
+							END
+						`);
+				}
 
 				if (current.user_id) {
+					const referenceTable = target.bookingTable
+						? target.bookingTable.replace('dbo.', '')
+						: target.applicationTable.replace('dbo.', '');
 					await createRequest(tx)
 						.input('user_id', sql.UniqueIdentifier, current.user_id)
-						.input('action_type', sql.NVarChar(80), `booking_confirmed_${module}`)
-						.input('reference_table', sql.NVarChar(80), target.bookingTable.replace('dbo.', ''))
+						.input('action_type', sql.NVarChar(80), `booking_confirmed_${normalizedModule}`)
+						.input('reference_table', sql.NVarChar(80), referenceTable)
 						.input('reference_id', sql.UniqueIdentifier, applicationId)
 						.query(`
 							INSERT INTO dbo.USERACTIVITIES (user_id, action_type, reference_table, reference_id)
@@ -362,15 +427,14 @@ router.post('/applications/:module/:applicationId/review', async (req, res) => {
 						.input('listing_id', sql.UniqueIdentifier, current.listing_id)
 						.query(`
 							UPDATE ${target.listingTable}
-							SET status = '${target.listingStatusRejected}',
-								is_locked = 0
+							SET status = '${target.listingStatusRejected}'${target.hasLockColumn ? ', is_locked = 0' : ''}
 							WHERE ${target.listingTableIdCol} = @listing_id;
 						`);
 
 					if (current.user_id) {
 						await createRequest(tx)
 							.input('user_id', sql.UniqueIdentifier, current.user_id)
-							.input('action_type', sql.NVarChar(80), `application_rejected_${module}`)
+							.input('action_type', sql.NVarChar(80), `application_rejected_${normalizedModule}`)
 							.input('reference_table', sql.NVarChar(80), target.applicationTable.replace('dbo.', ''))
 							.input('reference_id', sql.UniqueIdentifier, applicationId)
 							.query(`
@@ -383,7 +447,7 @@ router.post('/applications/:module/:applicationId/review', async (req, res) => {
 			if (actorId) {
 				await createRequest(tx)
 					.input('user_id', sql.UniqueIdentifier, actorId)
-					.input('action_type', sql.NVarChar(80), `admin_review_${module}_${finalStatus}`)
+					.input('action_type', sql.NVarChar(80), `admin_review_${normalizedModule}_${finalStatus}`)
 					.input('reference_table', sql.NVarChar(80), target.applicationTable.replace('dbo.', ''))
 					.input('reference_id', sql.UniqueIdentifier, applicationId)
 					.query(`
@@ -406,6 +470,7 @@ router.post('/applications/:module/:applicationId/review', async (req, res) => {
 router.get('/listings/pending', async (_req, res) => {
 	try {
 		const pool = await getPool();
+		await ensureMarketplaceApplicationsTable(pool);
 		const result = await pool.request().query(`
 			SELECT
 				'tuition' AS listing_type,
@@ -416,8 +481,7 @@ router.get('/listings/pending', async (_req, res) => {
 				t.is_locked
 			FROM dbo.TUITIONS t
 			INNER JOIN dbo.USERS u ON u.user_id = t.user_id
-			WHERE ISNULL(t.is_listed, 0) = 0
-			  AND LOWER(ISNULL(t.status, 'pending')) = 'pending'
+			WHERE LOWER(ISNULL(t.status, 'pending')) = 'pending'
 
 			UNION ALL
 
@@ -430,8 +494,7 @@ router.get('/listings/pending', async (_req, res) => {
 				m.is_locked
 			FROM dbo.MAIDS m
 			INNER JOIN dbo.USERS u ON u.user_id = m.user_id
-			WHERE ISNULL(m.is_listed, 0) = 0
-			  AND LOWER(ISNULL(m.status, 'pending')) = 'pending'
+			WHERE LOWER(ISNULL(m.status, 'pending')) = 'pending'
 
 			UNION ALL
 
@@ -444,8 +507,7 @@ router.get('/listings/pending', async (_req, res) => {
 				r.is_locked
 			FROM dbo.ROOMMATELISTINGS r
 			INNER JOIN dbo.USERS u ON u.user_id = r.user_id
-			WHERE ISNULL(r.is_listed, 0) = 0
-			  AND LOWER(ISNULL(r.status, 'pending')) = 'pending'
+			WHERE LOWER(ISNULL(r.status, 'pending')) = 'pending'
 
 			UNION ALL
 
@@ -458,8 +520,20 @@ router.get('/listings/pending', async (_req, res) => {
 				h.is_locked
 			FROM dbo.HOUSERENTLISTINGS h
 			INNER JOIN dbo.USERS u ON u.user_id = h.user_id
-			WHERE ISNULL(h.is_listed, 0) = 0
-			  AND LOWER(ISNULL(h.status, 'pending')) = 'pending'
+			WHERE LOWER(ISNULL(h.status, 'pending')) = 'pending'
+
+			UNION ALL
+
+			SELECT
+				'marketplace' AS listing_type,
+				m.item_id AS listing_id,
+				CONCAT('Marketplace - ', m.title) AS title,
+				u.name AS owner_name,
+				m.status,
+				CAST(0 AS BIT) AS is_locked
+			FROM dbo.MARKETPLACELISTINGS m
+			INNER JOIN dbo.USERS u ON u.user_id = m.user_id
+			WHERE LOWER(ISNULL(m.status, 'pending')) = 'pending'
 
 			ORDER BY listing_type, listing_id;
 		`);
@@ -476,7 +550,7 @@ router.post('/listings/review', async (req, res) => {
 		if (!['approved', 'rejected'].includes(decision)) {
 			return res.status(400).json({ msg: 'decision must be approved or rejected.' });
 		}
-		if (!['tuition', 'maid', 'roommate', 'houserent'].includes(listingType)) {
+		if (!['tuition', 'maid', 'roommate', 'houserent', 'marketplace'].includes(listingType)) {
 			return res.status(400).json({ msg: 'Invalid listing type.' });
 		}
 
@@ -485,12 +559,14 @@ router.post('/listings/review', async (req, res) => {
 			maid: 'dbo.MAIDS',
 			roommate: 'dbo.ROOMMATELISTINGS',
 			houserent: 'dbo.HOUSERENTLISTINGS',
+			marketplace: 'dbo.MARKETPLACELISTINGS',
 		};
 		const idColumnMap = {
 			tuition: 'tuition_id',
 			maid: 'maid_id',
 			roommate: 'listing_id',
 			houserent: 'house_id',
+			marketplace: 'item_id',
 		};
 
 		const table = tableMap[listingType];
@@ -516,17 +592,37 @@ router.post('/listings/review', async (req, res) => {
 			}
 
 			if (decision === 'approved') {
-				await createRequest(tx)
-					.input('listing_id', sql.UniqueIdentifier, listingId)
-					.query(`
-						UPDATE ${table}
-						SET status = 'approved', is_listed = 1
-						WHERE ${idColumn} = @listing_id;
-					`);
+				if (listingType === 'marketplace') {
+					await createRequest(tx)
+						.input('listing_id', sql.UniqueIdentifier, listingId)
+						.query(`
+							UPDATE ${table}
+							SET status = 'approved'
+							WHERE ${idColumn} = @listing_id;
+						`);
+				} else {
+					await createRequest(tx)
+						.input('listing_id', sql.UniqueIdentifier, listingId)
+						.query(`
+							UPDATE ${table}
+							SET status = 'approved', is_listed = 1
+							WHERE ${idColumn} = @listing_id;
+						`);
+				}
 			} else {
-				await createRequest(tx)
-					.input('listing_id', sql.UniqueIdentifier, listingId)
-					.query(`DELETE FROM ${table} WHERE ${idColumn} = @listing_id;`);
+				if (listingType === 'marketplace') {
+					await createRequest(tx)
+						.input('listing_id', sql.UniqueIdentifier, listingId)
+						.query(`
+							UPDATE ${table}
+							SET status = 'rejected'
+							WHERE ${idColumn} = @listing_id;
+						`);
+				} else {
+					await createRequest(tx)
+						.input('listing_id', sql.UniqueIdentifier, listingId)
+						.query(`DELETE FROM ${table} WHERE ${idColumn} = @listing_id;`);
+				}
 			}
 
 			if (actorId) {
